@@ -16,21 +16,21 @@ type ParseError = String
 -- combinator library doesn't support descriptive parse errors.
 -- However, for compatibility with Parsec, we give this function 
 -- the same type.
-parse :: Parser c a -> [c] -> Either ParseError a
+parse :: Parser a -> String -> Either ParseError a
 parse parser str = case (doParse parser str) of 
     []      -> Left  "No parses"
     [(a,_)] -> Right a
     _       -> Left  "Multiple parses"
     
-parseFromFile :: Parser Char a -> String -> IO (Either ParseError a)
+parseFromFile :: Parser a -> String -> IO (Either ParseError a)
 parseFromFile parser filename = do 
   handle <- openFile filename ReadMode 
   str <- hGetContents handle
-  return $ parse parser str  
+  return $ parse parser str
   
   
 -- | Parsers for specific sorts of characters 
-alpha, digit, upper, lower, space :: Parser Char Char
+alpha, digit, upper, lower, space :: Parser Char
 alpha = satisfy isAlpha
 digit = satisfy isDigit            
 upper = satisfy isUpper
@@ -39,29 +39,29 @@ space = satisfy isSpace
    
 -- | Parses and returns the specified character        
 -- succeeds only if the input is exactly that character
-char :: Char -> Parser Char Char
+char :: Char -> Parser Char
 char c = satisfy (c ==)   
 
 -- | Parses and returns the specified string. 
 -- Succeeds only if the input is the given string
-string :: String -> Parser Char String
+string :: String -> Parser String
 string = mapM char
 
 -- | succeed only if the input is a (positive or negative) integer
-int :: Parser Char Int
+int :: Parser Int
 int = do n <- string "-" <|> return []
          s <- many1 digit  
          return $ (read (n ++ s) :: Int)
 
 -- | given a parser, apply it as many times as possible                         
 -- and return the answer in a list
-many   :: Parser c a -> Parser c [a]
+many   :: Parser a -> Parser [a]
 many p = many1 p <|> many0 
    where many0 = return []
                     
 -- | given a parser, apply it as many times as possible,
 -- but at least once.
-many1 :: Parser c a -> Parser c [a]
+many1 :: Parser a -> Parser [a]
 many1 p = do x  <- p
              xs <- many p
              return (x:xs)
@@ -70,11 +70,11 @@ many1 p = do x  <- p
 --   Returns a value produced by a /left/ associative application of all
 --   functions returned by @op@. If there are no occurrences of @p@, @x@ is
 --   returned.
-chainl :: Parser c b -> Parser c (b -> b -> b) -> b -> Parser c b
+chainl :: Parser b -> Parser (b -> b -> b) -> b -> Parser b
 chainl p op x = chainl1 p op <|> return x
 
 -- | Like 'chainl', but parses one or more occurrences of @p@.
-chainl1 :: Parser c a -> Parser c (a -> a -> a) -> Parser c a
+chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
 p `chainl1` pop = p >>= rest
     where rest x = next x <|> return x 
           next x = do o <- pop
@@ -83,12 +83,12 @@ p `chainl1` pop = p >>= rest
                       
                       
 -- | Combine all parsers in the list (sequentially)
-choice :: [Parser c a] -> Parser c a
+choice :: [Parser a] -> Parser a
 choice = foldr (<|>) (fail "")
 
 -- | @between open close p@ parses @open@, followed by @p@ and finally
 --   @close@. Only the value of @p@ is returned.
-between :: Parser c open -> Parser c a -> Parser c close -> Parser c a
+between :: Parser open -> Parser a -> Parser close -> Parser a
 between open p close = do _ <- open
                           x <- p
                           _ <- close
@@ -96,12 +96,12 @@ between open p close = do _ <- open
 
 -- | @sepBy p sep@ parses zero or more occurrences of @p@, separated by @sep@.
 --   Returns a list of values returned by @p@.
-sepBy :: Parser c a -> Parser c sep -> Parser c [a]
+sepBy :: Parser a -> Parser sep -> Parser [a]
 sepBy p sep = sepBy1 p sep <|> return []
 
 -- | @sepBy1 p sep@ parses one or more occurrences of @p@, separated by @sep@.
 --   Returns a list of values returned by @p@.
-sepBy1 :: Parser c a -> Parser c sep -> Parser c [a]
+sepBy1 :: Parser a -> Parser sep -> Parser [a]
 sepBy1 p sep = liftM2 (:) p (many (sep >> p))
 
 
