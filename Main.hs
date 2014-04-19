@@ -10,7 +10,8 @@ import Text.PrettyPrint (Doc, (<+>),($$),(<>))
 import qualified Text.PrettyPrint as PP
 
 import Parser
-import Test.HUnit
+import Data.Array.IO
+import Data.Map as Map
 
 type LC4 = [Insn]
 
@@ -44,6 +45,18 @@ data Tok = R Int
          | UIMM Int
          | LABEL String
          deriving (Show, Eq)
+
+data MachineState = MachineState {
+                         pc :: Int,
+                         nzp :: Int,
+                         regs :: Map Int Int,
+                         priv :: Bool,
+                         memory :: Map Int Int,
+                         labels :: Map String Int }
+
+
+
+
 
 wList :: LC4
 wList = [ wADD, wCONST, wCMP ]
@@ -122,10 +135,10 @@ display :: PP a => a -> String
 display = show . pp
 
 -- Simple tests 
-
+{-
 t0 :: Test
 t0 = TestList
      [  display wADD ~?= "ADD R5 R4 R3",
         display wCONST ~?= "CONST R1 #5",
         display wCMP ~?= "CMP R1 R3",
-        display wJMP ~?= "JMP #5 <Hello>" ]
+        display wJMP ~?= "JMP #5 <Hello>" ] -}
