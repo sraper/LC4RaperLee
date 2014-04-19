@@ -10,14 +10,10 @@ import Text.PrettyPrint (Doc, (<+>),($$),(<>))
 import qualified Text.PrettyPrint as PP
 
 import Parser
-<<<<<<< HEAD
 import Data.Array.IO
 import Data.Map as Map
-=======
 import ParserCombinators
 import Test.HUnit
-import Data.Array
->>>>>>> d6816d1ec3855b3fbfd1cc08ca16d898093f2db9
 
 type LC4 = [Insn]
 
@@ -143,15 +139,13 @@ display :: PP a => a -> String
 display = show . pp
 
 -- Simple tests 
-{-
+
 t0 :: Test
 t0 = TestList
      [  display wADD ~?= "ADD R5 R4 R3",
         display wCONST ~?= "CONST R1 #5",
         display wCMP ~?= "CMP R1 R3",
-<<<<<<< HEAD
-        display wJMP ~?= "JMP #5 <Hello>" ] -}
-=======
+        display wJMP ~?= "JMP #5 <Hello>" ]
         display wJMP ~?= "JMP #5 <Hello>" ]
 
 -- Problem 1
@@ -284,4 +278,3 @@ a1 = array (R1, R7) [(x, 0) | x <- enumFrom R1]
 main :: IO () 
 main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6 ])
           return ()
->>>>>>> d6816d1ec3855b3fbfd1cc08ca16d898093f2db9
