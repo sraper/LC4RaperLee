@@ -58,9 +58,6 @@ data MachineState = MachineState {
                          labels :: Map String Int }
 
 
-
-
-
 wList :: LC4
 wList = [ wADD, wCONST, wCMP ]
 

@@ -10,8 +10,8 @@ import Numeric
 hexToDec :: String -> Int
 hexToDec = fst . head . readHex
 
-binToDec :: Int -> Int
-binToDec =
+binToDec :: String -> Int
+binToDec x:xs = undefined
 
 getRegVal :: MachineState -> Int -> Int
 getRegVal ms r = let registers = regs ms in
