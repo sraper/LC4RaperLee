@@ -14,6 +14,7 @@ import Data.Array.IO
 import Data.Map as Map
 import ParserCombinators
 import Test.HUnit
+import Data.Array
 
 type LC4 = [Insn]
 
@@ -145,7 +146,6 @@ t0 = TestList
      [  display wADD ~?= "ADD R5 R4 R3",
         display wCONST ~?= "CONST R1 #5",
         display wCMP ~?= "CMP R1 R3",
-        display wJMP ~?= "JMP #5 <Hello>" ]
         display wJMP ~?= "JMP #5 <Hello>" ]
 
 -- Problem 1
