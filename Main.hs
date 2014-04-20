@@ -28,12 +28,12 @@ data Insn = Single Op
 data Op = NOP | RTI | RET
           deriving (Show, Eq)
 
-data UnaryOp = JSRR | JMPR | TRAP
+data UnaryOp = JSRR | JMPR | TRAP | JMP
                deriving (Show, Eq)
 
 data BinaryOp =  BRn | BRnz | BRz | BRzp | BRp | BRnzp
                | CMP | CMPU | CMPI | CMPIU
-               | NOT | JMP
+               | NOT
                | CONST | HICONST
                | LEA | LC
                deriving (Show, Eq)
@@ -71,7 +71,7 @@ wCMP :: Insn
 wCMP = Binary CMP (R 1) (R 3)
 
 wJMP :: Insn
-wJMP = Binary JMP (IMM 5) (LABEL "TRAP_PUTC")
+wJMP = Unary JMP (LABEL "TRAP_PUTC")
 
 ---PP stuffs
 
@@ -87,6 +87,7 @@ instance PP UnaryOp where
   pp JSRR = PP.text "JSRR"
   pp JMPR = PP.text "JMPR"
   pp TRAP = PP.text "TRAP"
+  pp JMP  = PP.text "JMP"
 
 instance PP BinaryOp where
   pp BRn     = PP.text "BRn"
@@ -100,7 +101,6 @@ instance PP BinaryOp where
   pp CMPI    = PP.text "CMPI"
   pp CMPIU   = PP.text "CMPIU"
   pp NOT     = PP.text "NOT"
-  pp JMP     = PP.text "JMP"
   pp CONST   = PP.text "CONST"
   pp HICONST = PP.text "HICONST"
   pp LEA     = PP.text "LEA"
@@ -179,7 +179,7 @@ opP = constP "NOP" (Single NOP) <|> constP "RTI" (Single RTI)
 
 unaryP :: Parser UnaryOp
 unaryP = constP "JSRR" JSRR <|> constP "JMPR" JMPR
-         <|> constP "TRAP" TRAP
+         <|> constP "TRAP" TRAP <|> constP "JMP" JMP
 
 binaryP :: Parser BinaryOp
 binaryP = constP "BRn" BRn <|> constP "BRnz" BRnz
@@ -187,7 +187,7 @@ binaryP = constP "BRn" BRn <|> constP "BRnz" BRnz
           <|> constP "BRp" BRp <|> constP "BRnzp" BRnzp 
           <|> constP "CMP" CMP <|> constP "CMPU" CMPU
           <|> constP "CMPI" CMPI <|> constP "CMPIU" CMPIU
-          <|> constP "NOT" NOT <|> constP "JMP" JMP
+          <|> constP "NOT" NOT 
           <|> constP "CONST" CONST <|> constP "HICONST" HICONST
           <|> constP "LEA" LEA <|> constP "LC" LC
 
@@ -253,11 +253,11 @@ t3 = parse insnP sCMP ~?=
 
 t4 :: Test
 t4 = parse insnP sJMP ~?=
-     Right ( Binary JMP (IMM 5) (LABEL "TRAP_PUTC") )
+     Right ( Unary JMP (LABEL "TRAP_PUTC") )
 
 t5 :: Test
 t5 = parse lc4P sProg ~?=
-     Right ( [Binary CMP (R 1) (R 3) , Binary JMP (IMM 5) (LABEL "TRAP_PUTC")] )
+     Right ( [Binary CMP (R 1) (R 3) , Unary JMP (LABEL "TRAP_PUTC")] )
 
 t6 :: Test
 t6 = TestList ["s1" ~: p "sample.asm" ] where
