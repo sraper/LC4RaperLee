@@ -265,13 +265,6 @@ t6 = TestList ["s1" ~: p "sample.asm" ] where
   succeed (Left _)  = assert False
   succeed (Right _) = assert True
 
-data Register = R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7
-                deriving (Eq, Ix, Ord, Show, Enum)
-
-a1 :: Array Register Int
-a1 = array (R1, R7) [(x, 0) | x <- enumFrom R1]
-
-
 main :: IO () 
 main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6 ])
           return ()
