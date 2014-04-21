@@ -8,7 +8,6 @@ import Parser
 import Control.Monad
 import Data.Char
 import System.IO
-
             
 type ParseError = String
 
@@ -58,6 +57,13 @@ int = do n <- string "-" <|> return []
 many   :: Parser a -> Parser [a]
 many p = many1 p <|> many0 
    where many0 = return []
+
+-- | given a parser, try to apply it once
+once :: Parser a -> Parser [a]
+once p = aux p <|> many0
+   where many0 = return []
+         aux p = do x <- p
+                    return [x]
                     
 -- | given a parser, apply it as many times as possible,
 -- but at least once.

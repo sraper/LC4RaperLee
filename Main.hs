@@ -9,12 +9,11 @@ module Main where
 import Text.PrettyPrint (Doc, (<+>),($$),(<>))
 import qualified Text.PrettyPrint as PP
 
-import Parser
-import Data.Array.IO
 import Data.Map as Map
+import Parser
 import ParserCombinators
 import Test.HUnit
-import Data.Array
+import Data.Char
 import Data.Array.IO
 
 type LC4 = [Insn]
@@ -133,7 +132,7 @@ instance PP Insn where
   pp (Binary op a b)    = pp op <+> pp a <+> pp b
   pp (Ternary op a b c) = pp op <+> pp a <+> pp b <+> pp c
   pp (DataVal v)        = PP.int v
-  pp (Comment s)        = PP.text s
+  pp (Comment s)        = PP.char ',' <+> PP.text s
 
 instance PP Tok where
   pp (R x)     = PP.char 'R' <> PP.int x
@@ -159,25 +158,31 @@ constP s x = do s' <- string s
                 if s' == s then return x else fail "did not match"
 
 wsP :: Parser a -> Parser a
-wsP p = do _ <- many (space <|> char '\n' <|> char '\t')
+wsP p = do _ <- many space
            a <- p
            return a
+
+notNewLine :: Parser Char
+notNewLine = satisfy ('\n' /=)
 
 tokenP :: Parser Tok
 tokenP = regP <|> immP <|> labelP
 
 regP :: Parser Tok
-regP = do _ <- wsP $ string "R"
+regP = do _ <- wsP $ once $ char ','
+          _ <- wsP $ string "R"
           i <- wsP $ int
           return $ (R i) 
 
 immP :: Parser Tok
-immP = do _ <- wsP $ string "#"
+immP = do _ <- wsP $ once $ char ','
+          _ <- wsP $ once $ char '#'
           i <- wsP $ int
           return $ IMM i
 
 labelP :: Parser Tok
-labelP = do s <- many (wsP get)
+labelP = do _ <- wsP $ once $ char ','
+            s <- wsP $ many notNewLine
             return $ LABEL s
 
 opP :: Parser Insn
@@ -210,12 +215,16 @@ ternaryP = constP "ADD" ADD <|> constP "MUL" MUL
 unaryStP :: Parser Insn
 unaryStP = do op <- wsP $ unaryP
               tok <- wsP $ tokenP
+              _ <- once $ char ';'
+              _ <- many notNewLine
               return $ Unary op tok
 
 binaryStP :: Parser Insn
 binaryStP = do op <- wsP $ binaryP
                tok1 <- wsP $ tokenP
                tok2 <- wsP $ tokenP
+               _ <- once $ char ';'
+               _ <- many notNewLine
                return $ Binary op tok1 tok2
 
 ternaryStP :: Parser Insn
@@ -223,6 +232,8 @@ ternaryStP = do op <- wsP $ ternaryP
                 tok1 <- wsP $ tokenP
                 tok2 <- wsP $ tokenP
                 tok3 <- wsP $ tokenP
+                _ <- once $ char ';'
+                _ <- many notNewLine
                 return $ Ternary op tok1 tok2 tok3
 
 dataValP :: Parser Insn
@@ -230,8 +241,8 @@ dataValP = do i <- wsP $ int
               return $ DataVal i
 
 commentP :: Parser Insn
-commentP = do _ <- wsP $ char ';'
-              s <- wsP $ many (wsP get)
+commentP = do _ <- wsP $ many1 $ char ';'
+              s <- wsP $ many notNewLine
               return $ Comment s
 
 insnP :: Parser Insn
@@ -239,22 +250,22 @@ insnP = opP <|> unaryStP <|> binaryStP
         <|> ternaryStP <|> dataValP <|> commentP
 
 lc4P :: Parser LC4
-lc4P = wsP $ many1 insnP
+lc4P = wsP $ many insnP
 
 sADD :: String
 sADD = "ADD R5 R4 R3"
 
 sCMP :: String
-sCMP = "CMP R1 R3"
+sCMP = "CMP R1 R3;boohoo"
 
 sCONST :: String
-sCONST = "CONST R1 #-5"
+sCONST = "CONST R1 -5   ; Hello"
 
 sJMP :: String 
 sJMP = "JMP TRAP_PUTC"
 
 sComment :: String
-sComment = "; whatever"
+sComment = ";    CIS 552"
 
 sProg :: String
 sProg = sCMP ++ "\n" ++ sJMP
@@ -281,7 +292,7 @@ t5 = parse lc4P sProg ~?=
 
 t5a :: Test
 t5a = parse insnP sComment ~?=
-      Right ( Comment "whatever" )
+      Right ( Comment "CIS 552" )
 
 t6 :: Test
 t6 = TestList ["s1" ~: p "sample.asm" ] where
@@ -289,6 +300,17 @@ t6 = TestList ["s1" ~: p "sample.asm" ] where
   succeed (Left _)  = assert False
   succeed (Right _) = assert True
 
+t7 :: IO()
+t7 = do p <- parseFromFile lc4P "sample.asm"
+        let bool = p ~?= Right [ Binary CONST (R 1) (IMM 1),
+                         Ternary ADD (R 1) (R 1) (IMM 2),
+                         Ternary ADD (R 2) (R 1) (IMM 3),
+                         Ternary SUB (R 1) (R 2) (R 1),
+                         Comment "hey" ] 
+        runTestTT bool
+        return ()
+
 main :: IO () 
-main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6 ])
+main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t5a, t6 ])
+          t7
           return ()
