@@ -15,6 +15,7 @@ import Data.Map as Map
 import ParserCombinators
 import Test.HUnit
 import Data.Array
+import Data.Array.IO
 
 type LC4 = [Insn]
 
@@ -22,6 +23,8 @@ data Insn = Single Op
           | Unary UnaryOp Tok 
           | Binary BinaryOp Tok Tok
           | Ternary TernaryOp Tok Tok Tok
+          | DataVal Int
+          | Comment String 
           deriving (Show, Eq)
 
 
@@ -53,8 +56,10 @@ data MachineState = MachineState {
                          pc :: Int,
                          nzp :: Int,
                          regs :: Map Int Int,
+--                         regs :: IO (IOArray Int Int), 
                          priv :: Bool,
-                         memory :: Map Int Int,
+                         memory :: Map Int Insn,
+--                       memory :: IO (IOArray Int Int),
                          labels :: Map String Int }
 
 
@@ -127,6 +132,8 @@ instance PP Insn where
   pp (Unary op a)       = pp op <+> pp a
   pp (Binary op a b)    = pp op <+> pp a <+> pp b
   pp (Ternary op a b c) = pp op <+> pp a <+> pp b <+> pp c
+  pp (DataVal v)        = PP.int v
+  pp (Comment s)        = PP.text s
 
 instance PP Tok where
   pp (R x)     = PP.char 'R' <> PP.int x
@@ -218,8 +225,18 @@ ternaryStP = do op <- wsP $ ternaryP
                 tok3 <- wsP $ tokenP
                 return $ Ternary op tok1 tok2 tok3
 
+dataValP :: Parser Insn
+dataValP = do i <- wsP $ int
+              return $ DataVal i
+
+commentP :: Parser Insn
+commentP = do _ <- wsP $ char ';'
+              s <- wsP $ many (wsP get)
+              return $ Comment s
+
 insnP :: Parser Insn
-insnP = opP <|> unaryStP <|> binaryStP <|> ternaryStP
+insnP = opP <|> unaryStP <|> binaryStP 
+        <|> ternaryStP <|> dataValP <|> commentP
 
 lc4P :: Parser LC4
 lc4P = wsP $ many1 insnP
@@ -234,7 +251,10 @@ sCONST :: String
 sCONST = "CONST R1 #-5"
 
 sJMP :: String 
-sJMP = "JMP #5 TRAP_PUTC"
+sJMP = "JMP TRAP_PUTC"
+
+sComment :: String
+sComment = "; whatever"
 
 sProg :: String
 sProg = sCMP ++ "\n" ++ sJMP
@@ -258,6 +278,10 @@ t4 = parse insnP sJMP ~?=
 t5 :: Test
 t5 = parse lc4P sProg ~?=
      Right ( [Binary CMP (R 1) (R 3) , Unary JMP (LABEL "TRAP_PUTC")] )
+
+t5a :: Test
+t5a = parse insnP sComment ~?=
+      Right ( Comment "whatever" )
 
 t6 :: Test
 t6 = TestList ["s1" ~: p "sample.asm" ] where
