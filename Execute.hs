@@ -9,6 +9,7 @@ import Numeric
 import Data.Word
 import Data.Bits
 import ParserCombinators
+import Debug.Trace
 
 hexToDec :: String -> Int
 hexToDec = fst . head . readHex
@@ -31,6 +32,8 @@ matchNZP ms v = v == (nzp ms)
 wordToInt :: Word -> Int
 wordToInt = fromIntegral
                 
+traceM :: (Monad m) => String -> m ()
+traceM string = trace string $ return ()
 
 execute :: Insn -> State MachineState ()
 execute (Single NOP) = incPC
@@ -73,7 +76,9 @@ execute (Unary JMP l)
                                      put $ ms { pc = pcv + 1 + add }
 execute (Binary CONST (R rd) (IMM i))
                                 = do ms <- get
+                                     traceM "hello"
                                      setRegVal rd i
+                                     incPC
 execute (Binary LEA (R r1) (LABEL l))
                                 = do ms <- get
                                      let addr = Map.findWithDefault 0 l $ labels ms
@@ -87,81 +92,64 @@ execute (Binary LC (R r1) (LABEL l))
                                         _ -> return () -- NEED ERROR
 execute (Ternary ADD (R rd) (R rs) (R rt))
                                 = do ms <- get
+                                     traceM $ "maybe"
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
                                          rtv = getRegVal ms rt
-                                         pcv = pc ms
-                                     setRegVal rdv $ rsv + rtv
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ rsv + rtv
+                                     incPC
 execute (Ternary MUL (R rd) (R rs) (R rt))
                                 = do ms <- get
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
                                          rtv = getRegVal ms rt
-                                         pcv = pc ms
-                                     setRegVal rdv $ rsv * rtv
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ rsv * rtv
+                                     incPC
 execute (Ternary SUB (R rd) (R rs) (R rt)) 
                                 = do ms <- get
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
                                          rtv = getRegVal ms rt
-                                         pcv = pc ms
-                                     setRegVal rdv $ rsv - rtv
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ rsv - rtv
+                                     incPC
 execute (Ternary DIV (R rd) (R rs) (R rt)) 
                                 = do ms <- get
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
                                          rtv = getRegVal ms rt
-                                         pcv = pc ms
-                                     setRegVal rdv $ rsv `div` rtv
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ rsv `div` rtv
+                                     incPC
 execute (Ternary ADD (R rd) (R rs) (IMM imm))
                                 = do ms <- get
+                                     traceM $ "I'm here"
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
-                                         pcv = pc ms
-                                     setRegVal rdv $ rsv + imm
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ rsv + imm
+                                     incPC
 execute (Ternary AND (R rd) (R rs) (R rt))
                                 = do ms <- get
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
                                          rtv = getRegVal ms rt
-                                         pcv = pc ms
-                                     setRegVal rdv $ rsv .&. rtv
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ rsv .&. rtv
+                                     incPC
 execute (Binary NOT (R rd) (R rs)) -- i don't think this works complement 8 = -9???
                                 = do ms <- get
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
-                                         pcv = pc ms
-                                     setRegVal rdv $ complement rsv
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ complement rsv
+                                     incPC
 execute (Ternary OR (R rd) (R rs) (R rt)) 
                                 = do ms <- get
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
                                          rtv = getRegVal ms rt
-                                         pcv = pc ms
-                                     setRegVal rdv $ rsv .|. rtv
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ rsv .|. rtv
+                                     incPC
 execute (Ternary XOR (R rd) (R rs) (R rt)) 
                                 = do ms <- get
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
                                          rtv = getRegVal ms rt
-                                         pcv = pc ms
-                                     setRegVal rdv $ rsv `xor` rtv
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ rsv `xor` rtv
+                                     incPC
 execute (Ternary AND (R rd) (R rs) (IMM i)) 
                                 = do ms <- get
                                      let rsv = getRegVal ms rs
-                                         rdv = getRegVal ms rd
                                          pcv = pc ms
-                                     setRegVal rdv $ rsv .&. i
-                                     put $ ms { pc = pcv + 1 }
+                                     setRegVal rd $ rsv .&. i
+                                     incPC
 execute (Ternary LDR (R rd) (R rs) (IMM i))
                                 = do ms <- get
                                      let rsv = getRegVal ms rs
@@ -177,68 +165,4 @@ execute (Ternary STR (R rd) (R rs) (IMM i))
                                          val = getRegVal ms rd
                                      put $ ms { memory = Map.insert addr (DataVal val) (memory ms) }
 
-execute _ = do return ()
-
-execS :: Insn -> MachineState -> MachineState
-execS insn = execState (execute insn)
-
-populateMemory :: LC4 -> MachineState -> MachineState
-populateMemory [] ms = ms
-populateMemory xs ms = Prelude.foldr pop ms xs where
-    pop i acc = case i of
-        (Comment s) -> acc
-        _           -> acc { memory = Map.insert (pc acc) i (memory acc), pc = (pc acc) + 1 }
-
-runLC4 :: LC4 -> IO ()
-runLC4 insns = let ms = execProg $ populateMemory insns emptyMachine in
-               printMS ms
-
-execProg :: MachineState -> MachineState
-execProg ms = let insn = Map.findWithDefault (Single NOP) (pc ms) (memory ms) in
-              case insn of
-                (Single NOP) -> ms -- MIGHT NOT BE NOP THAT WE WANT AS FINAL
-                _ -> execProg $ execState (execute insn) ms
-
-main :: IO ()
-main = do s <- parseFromFile lc4P "sample.asm"
-          case s of
-            (Left _) -> print "f up"
-            (Right x) -> runLC4 x
-          return ()
-
-testPopulateMemory :: IO ()
-testPopulateMemory = do s <- parseFromFile lc4P "sample.asm"
-                        case s of
-                          (Left _) -> print "f up"
-                          (Right x) -> printMS $ populateMemory x emptyMachine
-                        return ()
-
-runOneInsn :: Insn -> IO ()
-runOneInsn insn = let ms = execS insn emptyMachine in
-           printMS ms
-
-printMS :: MachineState -> IO ()
-printMS ms = do putStr "pc: "
-                print $ pc ms
-                putStr "priv: "
-                print $ priv ms
-                putStr "nzp: "
-                print $ nzp ms
-                putStr "regs: "
-                print $ regs ms
-                putStr "labels: "
-                print $ labels ms
-                putStr "memory: "
-                print $ memory ms
-
-emptyMachine :: MachineState
-emptyMachine = MachineState {
-                 pc = hexToDec "8200",
-                 nzp = 0,
-                 regs = Map.empty,
---                 regs = newArray (0, 7) 0,
-                 priv = True,
-                 memory = Map.empty,
---                 memory = newArray (0, 7) 0,
-                 labels = Map.empty
-                  }
+execute _ = do traceM "failed"
