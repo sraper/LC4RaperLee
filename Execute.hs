@@ -40,10 +40,8 @@ execute (Single NOP) = incPC
 execute (Single RTI) = do ms <- get
                           put $ ms { priv = False }
 execute (Unary JSRR (R rs)) = do ms <- get
-                                 let rsv = getRegVal ms rs
-                                     pcv = pc ms
-                                 setRegVal 7 $ pcv + 1
-                                 put $ ms { pc = rsv }
+                                 setRegVal 7 $ (pc ms) + 1
+                                 put $ ms { pc = (getRegVal ms rs) }
 execute (Unary JMPR (R rs)) = do ms <- get
                                  let rsv = getRegVal ms rs
                                  put $ ms { pc = rsv }
@@ -76,7 +74,6 @@ execute (Unary JMP l)
                                      put $ ms { pc = pcv + 1 + add }
 execute (Binary CONST (R rd) (IMM i))
                                 = do ms <- get
-                                     traceM "hello"
                                      setRegVal rd i
                                      incPC
 execute (Binary LEA (R r1) (LABEL l))
@@ -92,7 +89,6 @@ execute (Binary LC (R r1) (LABEL l))
                                         _ -> return () -- NEED ERROR
 execute (Ternary ADD (R rd) (R rs) (R rt))
                                 = do ms <- get
-                                     traceM $ "maybe"
                                      let rsv = getRegVal ms rs
                                          rtv = getRegVal ms rt
                                      setRegVal rd $ rsv + rtv
