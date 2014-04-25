@@ -14,18 +14,21 @@ import Parser
 import ParserCombinators
 import Test.HUnit
 import Data.Char
-import Data.Array.IO
+import Data.Vector (Vector, (//), update, singleton, replicate)
+import Data.Word (Word16)
 
-type LC4 = [Insn]
+type LC4 = [Line]
+
+data Line = Insn | Directive | Comment
+
+data MemVal = Insn
+            | DataVal Word16
 
 data Insn = Single Op
           | Unary UnaryOp Tok 
           | Binary BinaryOp Tok Tok
           | Ternary TernaryOp Tok Tok Tok
-          | DataVal Int
-          | Comment String 
           deriving (Show, Eq)
-
 
 data Op = NOP | RTI | RET
           deriving (Show, Eq)
@@ -54,11 +57,9 @@ data Tok = R Int
 data MachineState = MachineState {
                          pc :: Int,
                          nzp :: Int,
-                         regs :: Map Int Int,
---                         regs :: IO (IOArray Int Int), 
+                         regs :: Vector Int,
                          priv :: Bool,
-                         memory :: Map Int Insn,
---                       memory :: IO (IOArray Int Int),
+                         memory :: Vector MemVal,
                          labels :: Map String Int }
 
 

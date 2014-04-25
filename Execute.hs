@@ -11,6 +11,8 @@ import Data.Bits
 import ParserCombinators
 import Debug.Trace
 
+newtype 
+
 hexToDec :: String -> Int
 hexToDec = fst . head . readHex
 
@@ -35,6 +37,17 @@ wordToInt = fromIntegral
 traceM :: (Monad m) => String -> m ()
 traceM string = trace string $ return ()
 
+data Delta = [Change]
+
+data Change = SetPC Int
+            | SetNZP Int
+            | SetReg Int Int
+            | SetPriv Bool
+            | SetMem Int Insn
+            | SetLabel String Int
+
+--Maybe change to return what is changed in the Machine State rather
+-- than actually update the machine state
 execute :: Insn -> State MachineState ()
 execute (Single NOP) = incPC
 execute (Single RTI) = do ms <- get
