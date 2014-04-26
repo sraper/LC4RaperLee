@@ -4,7 +4,7 @@
 -- Operations for building composite parsers are in the module
 -- ParserCombinators.
 
-module Parser (Parser,                  
+module Parser (Parser,
                    get,
                    choose,
                    (<|>),
