@@ -1,13 +1,11 @@
 -- Advanced Programming
 
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults  #-}
-module Main where 
+module LC4Parser where 
 
-import Data.Map as Map
 import Parser
 import ParserCombinators
 import Test.HUnit hiding (Label)
-import Data.Vector (Vector)
 import Data.Word (Word16)
 
 type LC4 = [Line]
@@ -53,14 +51,6 @@ data TernaryOp = ADD | MUL | SUB | DIV
 
 data Tok = R Word16 | IMM Word16 | LABEL String
          deriving (Show, Eq)
-
-data MachineState a = 
-     MachineState { pc :: Int,
-                    nzp :: Int,
-                    regs :: Vector MemVal,
-                    priv :: Bool,
-                    memory :: Vector MemVal,
-                    labels :: Map String Int }
 
 -- | given a parser, try to apply it at most once
 once :: Parser a -> Parser [a]
@@ -257,13 +247,13 @@ sDir :: String
 sDir = ".ADDR #5  ; what"
 
 sLabel :: String
-sLabel = ".FILL # 4 \n"
+sLabel = "BEGIN"
 
 sProg :: String
 sProg = sComment ++ "\n " ++ sCMP ++ "\n" ++ sJMP
 
 t0 :: Test
-t0 = parse lc4P sLabel ~?= Right ( [Label "BEGIN", Comment] )
+t0 = parse lineP sLabel ~?= Right ( Label "BEGIN" )
 
 t1 :: Test
 t1 = parse lineP sADD ~?=
@@ -303,13 +293,13 @@ t8 = TestList ["s1" ~: p "sample.asm" ] where
 t9 :: IO ()
 t9 = do p <- parseFromFile lc4P "sample.asm"
         let bool = p ~?= Right [ Comment,
-              Label "BEGIN",
+--              Label "BEGIN",
               Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
               Memory $ InsnVal $ Ternary ADD (R 1) (R 1) (IMM 2),
               Memory $ InsnVal $ Ternary ADD (R 2) (R 1) (IMM 3),
               Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
               Comment,
-              Label "END",
+--            Label "END",
               Memory $ InsnVal $ Single NOP ] 
         _ <- runTestTT bool
         return ()

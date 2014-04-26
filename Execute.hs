@@ -1,21 +1,29 @@
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults  #-}
 
-module Execute2 where
-import Data.Array.IO
-import qualified Data.Map as Map
+module Execute where
+
+import LC4Parser
+import ParserCombinators
+import MachineStateWrapper
+
 import Control.Monad.State
-import Main
 import Numeric
+
 import Data.Word
 import Data.Bits
-import ParserCombinators
-import Debug.Trace
 import Data.Vector (Vector, (!), (//), update, singleton, replicate)
+import qualified Data.Map as Map
+import Debug.Trace
+import MachineStateWrapper
 
+-- | Helper that converts binary string to integer
 binToInt :: String -> Int
-binToInt = fst . head . readInt 2 (\x -> x == '0' || x == '1') (\y -> if y == '0' then 0 else 1)
+binToInt = fst . head . readInt 2 pred digToInt
+           where pred = \x -> x == '0' || x == '1'
+                 digToInt = \y -> if y == '0' then 0 else 1
 
-matchNZP :: MachineState a -> String -> Bool
+-- | Helper that checks if NZP bits match input
+matchNZP :: MachineState -> String -> Bool
 matchNZP ms v = (binToInt v) == (nzp ms)
 
 wordToInt :: Word -> Int
@@ -24,18 +32,8 @@ wordToInt = fromIntegral
 traceM :: (Monad m) => String -> m ()
 traceM string = trace string $ return ()
 
-type Delta = [Change]
-
-data Change = SetPC Int
-            | IncPC
-            | SetNZP Int
-            | SetReg Int Int
-            | SetPriv Bool
-            | SetMem Int Insn
-            | SetLabel String Int
-
-
-aPut :: Delta -> State ( MachineState a) ()
+-- | Atomic put function
+aPut :: Delta -> MachineStateWrapper
 aPut []     = do return ()
 aPut (x:xs) = do ms <- get
                  case x of
@@ -48,7 +46,9 @@ aPut (x:xs) = do ms <- get
                      SetLabel l v -> put $ ms { labels = (Map.insert l v (labels ms)) }
                  aPut xs
 
-execute :: Insn -> State (MachineState ()) ()
+
+
+execute :: Insn -> MachineStateWrapper
 --execute (Single NOP) = incPC
 execute (Single RTI) = aPut [SetPriv False]
 execute (Unary JSRR (R rs)) = do ms <- get

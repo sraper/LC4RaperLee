@@ -9,6 +9,4 @@
 	ADD R2, R1, # 3		;hello
 	SUB R1, R2, R1
 	;; hey
-
-END
 	NOP
