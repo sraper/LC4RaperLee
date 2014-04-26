@@ -1,10 +1,9 @@
-module MachineStateWrapper.Monad where
+module MachineStateWrapper.Monad (MachineStateWrapper()) where
 
 import Prelude
 import Control.Monad
 import Control.Monad.State
 import Main
-
 
 newtype MachineStateWrapper a = MSW {run :: MachineState a}
 

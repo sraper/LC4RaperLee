@@ -1,6 +1,6 @@
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults  #-}
 
-module Execute where
+module Execute2 where
 import Data.Array.IO
 import qualified Data.Map as Map
 import Control.Monad.State
@@ -15,7 +15,7 @@ import Data.Vector (Vector, (!), (//), update, singleton, replicate)
 binToInt :: String -> Int
 binToInt = fst . head . readInt 2 (\x -> x == '0' || x == '1') (\y -> if y == '0' then 0 else 1)
 
-matchNZP :: MachineState -> String -> Bool
+matchNZP :: MachineState a -> String -> Bool
 matchNZP ms v = (binToInt v) == (nzp ms)
 
 wordToInt :: Word -> Int
@@ -35,7 +35,7 @@ data Change = SetPC Int
             | SetLabel String Int
 
 
-aPut :: Delta -> State MachineState ()
+aPut :: Delta -> State ( MachineState a) ()
 aPut []     = do return ()
 aPut (x:xs) = do ms <- get
                  case x of
@@ -48,8 +48,8 @@ aPut (x:xs) = do ms <- get
                      SetLabel l v -> put $ ms { labels = (Map.insert l v (labels ms)) }
                  aPut xs
 
-execute :: Insn -> State MachineState ()
-execute (Single NOP) = incPC
+execute :: Insn -> State (MachineState ()) ()
+--execute (Single NOP) = incPC
 execute (Single RTI) = aPut [SetPriv False]
 execute (Unary JSRR (R rs)) = do ms <- get
                                  aPut [SetReg 7 (1 + (pc ms)), SetPC ((regs ms) ! rs)]
@@ -80,10 +80,10 @@ execute (Unary JMP l)
                                      aPut [SetPC (pcv + 1 + add)]
 execute (Binary CONST (R rd) (IMM i))
                                 = aPut [IncPC, SetReg rd i]
-execute (Binary LEA (R r1) (LABEL l))
-                                = do ms <- get
-                                     let addr = Map.findWithDefault 0 l $ labels ms
-                                     setRegVal r1 addr
+--execute (Binary LEA (R r1) (LABEL l))
+  --                              = do ms <- get
+    --                                 let addr = Map.findWithDefault 0 l $ labels ms
+--                                     setRegVal r1 addr
 execute (Binary LC (R r1) (LABEL l))
                                 = do ms <- get
                                      let addr = Map.findWithDefault 0 l $ labels ms
