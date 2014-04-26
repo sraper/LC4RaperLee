@@ -1,4 +1,7 @@
-module MachineStateWrapper (get, aPut) where
+module MachineStateWrapper ( MachineState(pc, nzp, regs, priv, memory, labels), 
+                             StateM, get, aPut,
+                             Delta,
+                             Change(SetPC, IncPC, SetNZP, SetReg, SetPriv, SetMem, SetLabel))where
 
 import Prelude
 import Control.Monad
@@ -11,7 +14,7 @@ import Data.Int (Int16)
 data MachineState = 
      MachineState { pc :: Word16,
                     nzp :: Word16,
-                    regs :: Vector Int16,
+                    regs :: Vector Word16,
                     priv :: Bool,
                     memory :: Vector MemVal,
                     labels :: Map String Word16 }
@@ -21,12 +24,12 @@ type Delta = [Change]
 data Change = SetPC Word16
             | IncPC
             | SetNZP Word16
-            | SetReg Int Int16
+            | SetReg Int Word16
             | SetPriv Bool
             | SetMem Int MemVal
             | SetLabel String Word16
 
---newtype MachineStateWrapper a = MSW (StateM MachineState a)
+newtype MachineStateWrapper = StateM MachineState
 
 newtype StateM s a = S {runState :: s -> (a, s)}
 
@@ -40,15 +43,21 @@ instance Monad (StateM s) where
 evalState :: StateM s a -> s -> a
 evalState st = fst . runState st 
 
+execState :: StateM s a -> s -> s
+execState st = snd . runState st
+
 get :: StateM s s
 get = state $ \s -> (s,s)
 
 put :: s -> StateM s ()
 put s' = S $ \s -> ( (), s' )
 
+getNZP :: StateM MachineState a -> MachineState -> Word16
+getNZP st s = nzp (execState st s)
+
 -- | Atomic put function
 aPut :: Delta -> StateM MachineState ()
-aPut []     = do return ()
+aPut []     = return ()
 aPut (x:xs) = do ms <- get
                  case x of
                      SetPC v      -> put $ ms { pc = v }
@@ -59,4 +68,3 @@ aPut (x:xs) = do ms <- get
                      SetMem i v   -> put $ ms { memory = (memory ms) // [(i, v)] }
                      SetLabel l v -> put $ ms { labels = (Map.insert l v (labels ms)) }
                  aPut xs
-         

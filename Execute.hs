@@ -6,10 +6,10 @@ import LC4Parser
 import ParserCombinators
 import MachineStateWrapper
 
-import Control.Monad.State
 import Numeric
 
-import Data.Word
+import Data.Word (Word16)
+import Data.Int (Int16)
 import Data.Bits
 import Data.Vector (Vector, (!), (//), update, singleton, replicate)
 import qualified Data.Map as Map
@@ -23,46 +23,40 @@ binToInt = fst . head . readInt 2 pred digToInt
                  digToInt = \y -> if y == '0' then 0 else 1
 
 -- | Helper that checks if NZP bits match input
-matchNZP :: MachineState -> String -> Bool
-matchNZP ms v = (binToInt v) == (nzp ms)
+matchNZP :: MachineState -> Char -> Bool
+matchNZP ms 'N' = testBit (nzp ms) 2
+matchNZP ms 'Z' = testBit (nzp ms) 1
+matchNZP ms 'P' = testBit (nzp ms) 0
+matchNZP _  _   = False
 
-wordToInt :: Word -> Int
+wordToInt :: Word16 -> Int16
 wordToInt = fromIntegral
+
+word16ToInt :: Word16 -> Int
+word16ToInt = fromIntegral
 
 traceM :: (Monad m) => String -> m ()
 traceM string = trace string $ return ()
 
--- | Atomic put function
-aPut :: Delta -> MachineStateWrapper
-aPut []     = do return ()
-aPut (x:xs) = do ms <- get
-                 case x of
-                     SetPC v      -> put $ ms { pc = v }
-                     IncPC        -> put $ ms { pc = (pc ms) + 1 }
-                     SetNZP v     -> put $ ms { nzp = v }
-                     SetReg r v   -> put $ ms { regs = (regs ms) // [(r, v)] }
-                     SetPriv v    -> put $ ms { priv = v }
-                     SetMem i v   -> put $ ms { memory = (memory ms) // [(i, v)] }
-                     SetLabel l v -> put $ ms { labels = (Map.insert l v (labels ms)) }
-                 aPut xs
 
-
-
-execute :: Insn -> MachineStateWrapper
---execute (Single NOP) = incPC
+execute :: Insn -> StateM MachineState ()
+execute (Single NOP) = aPut [IncPC]
 execute (Single RTI) = aPut [SetPriv False]
 execute (Unary JSRR (R rs)) = do ms <- get
-                                 aPut [SetReg 7 (1 + (pc ms)), SetPC ((regs ms) ! rs)]
+                                 aPut [SetReg 7 (1 + (pc ms)), SetPC ((regs ms) ! (word16ToInt rs))]
 execute (Unary JMPR (R rs)) = do ms <- get
-                                 aPut [SetPC ((regs ms) ! rs)]
+                                 aPut [SetPC ((regs ms) ! (word16ToInt rs))]
 execute (Unary TRAP (IMM i)) = do ms <- get
                                   let pcv = pc ms
                                       newpcv = i + 0x8000
                                   aPut [SetReg 7 (pcv + 1), SetPC newpcv, SetPriv True]
-execute (Binary BRn (IMM i) (LABEL l))
+execute (Unary BRn l)
                                 = do ms <- get
-                                     matchNZP ms "100"
-                                     return ()
+                                     if matchNZP ms 'N'
+                                     then case l of
+                                              Label l -> aPut [SetPC (Map.findWithDefault 0 l $ labels ms)]
+                                              IMM i   -> aPut [SetPC ((pc ms ) + 1 + i)]
+                                     else return ()
 execute (Binary CMP (R rs) (R rt))
                                 = do ms <- get
                                      return ()

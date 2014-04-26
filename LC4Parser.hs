@@ -34,11 +34,11 @@ data Insn = Single Op
 data Op = NOP | RTI | RET
           deriving (Show, Eq)
 
-data UnaryOp = JSRR | JMPR | TRAP | JMP
+data UnaryOp = BRn | BRnz | BRz | BRzp | BRp | BRnzp
+             | JSRR | JMPR | TRAP | JMP
                deriving (Show, Eq)
 
-data BinaryOp =  BRn | BRnz | BRz | BRzp | BRp | BRnzp
-               | CMP | CMPU | CMPI | CMPIU | NOT
+data BinaryOp =  CMP | CMPU | CMPI | CMPIU | NOT
                | CONST | HICONST
                | LEA | LC
                deriving (Show, Eq)
@@ -112,14 +112,14 @@ tokenP :: Parser Tok
 tokenP = regP <|> immP <|> labelTokP
 
 unaryP :: Parser UnaryOp
-unaryP = constP "JSRR" JSRR <|> constP "JMPR" JMPR
+unaryP =  constP "BRn" BRn <|> constP "BRnz" BRnz
+         <|> constP "BRz" BRz <|> constP "BRzp" BRzp 
+         <|> constP "BRp" BRp <|> constP "BRnzp" BRnzp 
+         <|> constP "JSRR" JSRR <|> constP "JMPR" JMPR
          <|> constP "TRAP" TRAP <|> constP "JMP" JMP
 
 binaryP :: Parser BinaryOp
-binaryP = constP "BRn" BRn <|> constP "BRnz" BRnz
-          <|> constP "BRz" BRz <|> constP "BRzp" BRzp 
-          <|> constP "BRp" BRp <|> constP "BRnzp" BRnzp 
-          <|> constP "CMP" CMP <|> constP "CMPU" CMPU
+binaryP = constP "CMP" CMP <|> constP "CMPU" CMPU
           <|> constP "CMPI" CMPI <|> constP "CMPIU" CMPIU
           <|> constP "NOT" NOT 
           <|> constP "CONST" CONST <|> constP "HICONST" HICONST
