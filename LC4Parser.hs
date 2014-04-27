@@ -34,7 +34,7 @@ data Insn = Single Op
 data Op = NOP | RTI | RET
           deriving (Show, Eq)
 
-data UnaryOp = BRn | BRnz | BRz | BRzp | BRp | BRnzp
+data UnaryOp = BRn | BRnz | BRz | BRzp | BRnp | BRp | BRnzp
              | JSRR | JMPR | TRAP | JMP
                deriving (Show, Eq)
 
@@ -49,7 +49,7 @@ data TernaryOp = ADD | MUL | SUB | DIV
                | SLL | SRA | SRL | MOD
                deriving (Show, Eq)
 
-data Tok = R Word16 | IMM Word16 | LABEL String
+data Tok = R Int | IMM Int | LABEL String
          deriving (Show, Eq)
 
 -- | given a parser, try to apply it at most once
@@ -95,12 +95,12 @@ commentP = do _ <- sP $ char ';'
 regP :: Parser Tok
 regP = do _ <- sP $ once $ char ','
           _ <- sP $ string "R"
-          i <- word16
+          i <- sP int
           return $ (R i) 
 
 immP :: Parser Tok
 immP = do _ <- sP $ once $ char ','
-          i <- word16
+          i <- sP int
           return $ IMM i
 
 labelTokP :: Parser Tok
@@ -112,7 +112,8 @@ tokenP :: Parser Tok
 tokenP = regP <|> immP <|> labelTokP
 
 unaryP :: Parser UnaryOp
-unaryP =  constP "BRn" BRn <|> constP "BRnz" BRnz
+unaryP =  constP "BRn" BRn <|> constP "BRnz" BRnz 
+         <|> constP "BRnp" BRnp
          <|> constP "BRz" BRz <|> constP "BRzp" BRzp 
          <|> constP "BRp" BRp <|> constP "BRnzp" BRnzp 
          <|> constP "JSRR" JSRR <|> constP "JMPR" JMPR
