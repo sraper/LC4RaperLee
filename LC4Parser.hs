@@ -31,10 +31,10 @@ data Insn = Single Op
           | Ternary TernaryOp Tok Tok Tok
           deriving (Show, Eq)
 
-data Op = NOP | RTI | RET
+data Op = NOP | RTI | RET | EOF
           deriving (Show, Eq)
 
-data UnaryOp = BRn | BRnz | BRz | BRzp | BRp | BRnzp
+data UnaryOp = BRn | BRnz | BRnp | BRz | BRzp | BRp | BRnzp
              | JSRR | JMPR | TRAP | JMP
                deriving (Show, Eq)
 
@@ -43,8 +43,8 @@ data BinaryOp =  CMP | CMPU | CMPI | CMPIU | NOT
                | LEA | LC
                deriving (Show, Eq)
 
-data TernaryOp = ADD | MUL | SUB | DIV
-               | AND | OR | XOR | JSR
+data TernaryOp = ADD | MUL | SUB | DIV | ADDI
+               | AND | OR | XOR | JSR | ANDI
                | LDR | STR               
                | SLL | SRA | SRL | MOD
                deriving (Show, Eq)
@@ -113,8 +113,9 @@ tokenP = regP <|> immP <|> labelTokP
 
 unaryP :: Parser UnaryOp
 unaryP =  constP "BRn" BRn <|> constP "BRnz" BRnz
-         <|> constP "BRz" BRz <|> constP "BRzp" BRzp 
-         <|> constP "BRp" BRp <|> constP "BRnzp" BRnzp 
+         <|> constP "BRnp" BRnp <|> constP "BRz" BRz 
+         <|> constP "BRzp" BRzp <|> constP "BRp" BRp 
+         <|> constP "BRnzp" BRnzp 
          <|> constP "JSRR" JSRR <|> constP "JMPR" JMPR
          <|> constP "TRAP" TRAP <|> constP "JMP" JMP
 
@@ -127,9 +128,10 @@ binaryP = constP "CMP" CMP <|> constP "CMPU" CMPU
 
 ternaryP :: Parser TernaryOp
 ternaryP = constP "ADD" ADD <|> constP "MUL" MUL
-          <|> constP "SUB" SUB <|> constP "DIV" DIV 
-          <|> constP "AND" AND <|> constP "OR" OR
-          <|> constP "XOR" XOR <|> constP "JSR" JSR
+          <|> constP "SUB" SUB <|> constP "DIV" DIV
+          <|> constP "ADDI" ADDI <|> constP "AND" AND
+          <|> constP "OR" OR <|> constP "XOR" XOR
+          <|> constP "ANDI" ANDI <|> constP "JSR" JSR
           <|> constP "LDR" LDR <|> constP "STR" STR
           <|> constP "SLL" SLL <|> constP "SRA" SRA
           <|> constP "SRL" SRL <|> constP "MOD" MOD
@@ -138,6 +140,7 @@ opP :: Parser Line
 opP = (wsP $ constP "NOP" (Memory $ InsnVal $ Single NOP) )
       <|> ( wsP $ constP "RTI" (Memory $ InsnVal $ Single RTI))
       <|> ( wsP $ constP "RET" (Memory $ InsnVal $ Single RET))
+      <|> ( wsP $ constP "EOF" (Memory $ InsnVal $ Single EOF))
 
 unaryStP :: Parser Line
 unaryStP = do op <- wsP $ unaryP
@@ -293,13 +296,13 @@ t8 = TestList ["s1" ~: p "sample.asm" ] where
 t9 :: IO ()
 t9 = do p <- parseFromFile lc4P "sample.asm"
         let bool = p ~?= Right [ Comment,
---              Label "BEGIN",
+              Label "BEGIN",
               Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
               Memory $ InsnVal $ Ternary ADD (R 1) (R 1) (IMM 2),
               Memory $ InsnVal $ Ternary ADD (R 2) (R 1) (IMM 3),
               Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
               Comment,
---            Label "END",
+              Label "END",
               Memory $ InsnVal $ Single NOP ] 
         _ <- runTestTT bool
         return ()
