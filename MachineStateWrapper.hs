@@ -82,9 +82,6 @@ get = state $ \s -> (s,s)
 put :: s -> StateM s ()
 put s' = S $ \s -> ( (), s' )
 
---getNZP :: StateM MachineState a -> MachineState -> Word16
---getNZP st s = nzp (execState st s)
-
 -- | Atomic put function
 aPut :: Delta -> StateM MachineState ()
 aPut []     = return ()
