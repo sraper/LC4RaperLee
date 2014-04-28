@@ -28,9 +28,8 @@ matchSingleNZP ms 'Z' = z where (_, z, _) = nzp ms
 matchSingleNZP ms 'P' = p where (_, _, p) = nzp ms
 matchSingleNZP _  _   = False
 
-matchNZPs :: MachineState -> String -> Bool
-matchNZPs ms (x:xs) = matchSingleNZP ms x || matchNZPs ms xs
-matchNZPs _ []      = False
+matchNZPs' :: MachineState -> String -> Bool
+matchNZPs' ms xs = foldr (\x y -> y || (matchSingleNZP ms x)) False xs
 
 wordToInt :: Word16 -> Int
 wordToInt = fromIntegral
@@ -93,25 +92,25 @@ execute (Unary TRAP (IMM i))
 -------------------------------------------------------------------------------
 execute (Unary BRn l)
                      = do ms <- get
-                          branchLogic ms l (matchNZPs ms "N")
+                          branchLogic ms l (matchNZPs' ms "N")
 execute (Unary BRnz l)
                      = do ms <- get
-                          branchLogic ms l (matchNZPs ms "NZ")
+                          branchLogic ms l (matchNZPs' ms "NZ")
 execute (Unary BRz l)
                      = do ms <- get
-                          branchLogic ms l (matchNZPs ms "Z")
+                          branchLogic ms l (matchNZPs' ms "Z")
 execute (Unary BRzp l)
                      = do ms <- get
-                          branchLogic ms l (matchNZPs ms "ZP")
+                          branchLogic ms l (matchNZPs' ms "ZP")
 execute (Unary BRnp l)
                      = do ms <- get
-                          branchLogic ms l (matchNZPs ms "NP")
+                          branchLogic ms l (matchNZPs' ms "NP")
 execute (Unary BRp l)
                      = do ms <- get
-                          branchLogic ms l (matchNZPs ms "P")
+                          branchLogic ms l (matchNZPs' ms "P")
 execute (Unary BRnzp l)
                      = do ms <- get
-                          branchLogic ms l (matchNZPs ms "NZP")
+                          branchLogic ms l (matchNZPs' ms "NZP")
 -------------------------------------------------------------------------------
 --------------------------------- COMPARES ------------------------------------
 -------------------------------------------------------------------------------

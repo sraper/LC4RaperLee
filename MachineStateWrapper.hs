@@ -97,4 +97,4 @@ aPut (x:xs) = do ms <- get
                      SetPriv v       -> put $ ms { priv = v }
                      SetMem i v      -> put $ ms { memory = (memory ms) // [(i, v)] }
                      SetLabel l v    -> put $ ms { labels = (Map.insert l v (labels ms)) }
-                 aPut xs
+                 aPut xs             
