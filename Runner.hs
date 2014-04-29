@@ -8,6 +8,7 @@ import LC4Parser
 import Execute
 import ParserCombinators
 import Test.HUnit hiding (Label)
+import DataModel
 
 execS :: Insn -> MachineState -> MachineState
 execS insn = execState (execute insn)
@@ -88,7 +89,7 @@ tRTI = execS (Single RTI) m ~?= m { pc = 7, priv = False }
 
 tJSRR :: Test
 tJSRR = execS (Unary JSRR (R 1)) simpMachine ~?= 
-        simpMachine { regs = (regs simpMachine) // [(7,1)], pc = 1 }
+        simpMachine { regs = (regs simpMachine) // [(7,1)], pc = 1, nzp = (False, False, True) }
 
 tJMP :: Test
 tJMP = execS (Unary JMP (LABEL "lab")) simpMachine ~?= simpMachine { pc = 11 }
@@ -101,7 +102,7 @@ tJMPR = execS (Unary JMPR (R 5)) simpMachine ~?= simpMachine { pc = 5 }
 
 tTRAP :: Test
 tTRAP = execS (Unary TRAP (IMM 10)) simpMachine ~?=
-        simpMachine { priv = True, regs = (regs simpMachine) // [(7, 1)], pc = 32778 }
+        simpMachine { priv = True, regs = (regs simpMachine) // [(7, 1)], pc = 32778, nzp = (False, False, True) }
 
 tBR :: Test
 tBR = execS (Unary BRn (IMM 10)) simpMachine ~?= simpMachine { pc = 1 }
@@ -132,41 +133,41 @@ tCMPI = execS (Binary CMPI (R 1) (IMM (-1))) simpMachine ~?=
 
 tADD :: Test
 tADD = execS (Ternary ADD (R 1) (R 2) (R 3)) simpMachine ~?= 
-       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 5)] }
+       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 5)], nzp = (False, False, True) }
 
 tSUB :: Test
 tSUB = execS (Ternary SUB (R 1) (R 2) (R 3)) m ~?=
-       m { pc = 1, regs = (regs m) // [(1, 3)]}
+       m { pc = 1, regs = (regs m) // [(1, 3)], nzp = (False, False, True) }
        where m = simpMachine { regs = (regs simpMachine) // [(3, -1)] }
 
 tADD2 :: Test
 tADD2 = execS (Ternary ADD (R 1) (R 2) (IMM 3)) simpMachine ~?= 
-        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 5)] }
+        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 5)], nzp = (False, False, True) }
 
 tMOD :: Test
 tMOD = execS (Ternary MOD (R 1) (R 5) (R 3)) simpMachine ~?=
-       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 2)]}
+       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 2)], nzp = (False, False, True) }
 
 tAND :: Test
 tAND = execS (Ternary AND (R 1) (R 2) (R 6)) simpMachine ~?=
-       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 2)]}
+       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 2)], nzp = (False, False, True) }
 
 tAND2 :: Test
 tAND2 = execS (Ternary AND (R 1) (R 2) (IMM 6)) simpMachine ~?=
-        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 2)]}
+        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 2)], nzp = (False, False, True) }
 
 tSLL :: Test
 tSLL = execS (Ternary SLL (R 1) (R 2) (IMM 2)) simpMachine ~?=
-       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 8)]}
+       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 8)], nzp = (False, False, True) }
 
 tSRA :: Test
 tSRA = execS (Ternary SRL (R 1) (R 2) (IMM 2)) m ~?=
-       m { pc = 1, regs = (regs m) // [(1, 16383)]}
+       m { pc = 1, regs = (regs m) // [(1, 16383)], nzp = (False, False, True) }
        where m = simpMachine { regs = (regs simpMachine) // [(2, -1)]}
 
 tSRL :: Test
 tSRL = execS (Ternary SRA (R 1) (R 2) (IMM 2)) m ~?=
-       m { pc = 1, regs = (regs m) // [(1, -1)]}
+       m { pc = 1, regs = (regs m) // [(1, -1)], nzp = (True, False, False)}
        where m = simpMachine { regs = (regs simpMachine) // [(2, -1)]}
 
 tLDR :: Test
@@ -180,17 +181,17 @@ tSTR = execS (Ternary STR (R 1) (R 2) (IMM 3)) simpMachine ~?=
 
 tCONST :: Test
 tCONST = execS (Binary CONST (R 1) (IMM 10)) simpMachine ~?=
-         simpMachine { pc = 1, memory = (memory simpMachine) // [(1, DataVal 10)] }
+         simpMachine { pc = 1, memory = (memory simpMachine) // [(1, DataVal 10)], nzp = (False, False, True) }
 
 tLEA :: Test
 tLEA = execS (Binary LEA (R 1) (LABEL "lab")) simpMachine ~?=
-       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 10)] }
+       simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 10)], nzp = (False, False, True) }
 
 tLC :: Test
 tLC = execS (Binary LC (R 1) (LABEL "lab")) m ~?=
       m { pc = 1, regs = (regs m) // [(1, 3)] }
-      where m = simpMachine { memory = (memory simpMachine) // [(10, DataVal 3)] }
-
+      where m = simpMachine { memory = (memory simpMachine) // [(10, DataVal 3)], nzp = (False, False, True) }
+      
 allT :: IO ()
 allT = do _ <- runTestTT (TestList [ tNOP, tRTI, tJSRR, tJMP, tJMP2, tJMPR, tTRAP,
                                      tBR, tBR2, tBR3, tCMP, tCMPU, tCMPIU, tCMPI,

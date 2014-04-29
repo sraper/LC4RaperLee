@@ -10,6 +10,7 @@ import Data.Vector (Vector, (!), (//), update, singleton, replicate, fromList, f
 import Data.Map as Map
 import Data.Word (Word16)
 import Data.Int (Int16)
+import DataModel
 
 data MachineState = 
      MachineState { pc :: Word16,
