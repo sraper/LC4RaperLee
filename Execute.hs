@@ -43,8 +43,8 @@ calcNZPVal x = if x < 0
 branchLogic :: MachineState -> Tok -> Bool -> ErrExec Delta --StateM MachineState ()
 branchLogic ms t b = if b
                      then case t of
-                          LABEL l -> return [SetPC $ (Map.findWithDefault 0 l $ labels ms) + 1]
-                          IMM i   -> return [SetPC ((pc ms ) + 1 + (fromIntegral i))]
+                          LABEL l -> return [SetPC $ (Map.findWithDefault 0 l $ labels ms)]
+                          IMM i   -> return [SetPC ((pc ms ) + (fromIntegral i))]
                           _       -> throwError $ SomeError "BRANCH" --NEED ERROR
                      else return [IncPC]
 {-}
@@ -143,26 +143,26 @@ execute ms (Ternary ADD (R rd) (R rs) (R rt))
                      = let rsv = (regs ms) ! rs
                            rtv = (regs ms) ! rt in
                        return [ SetReg rd (rsv + rtv),
-                                SetNZP $ calcNZPVal $ rsv + rtv, IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ rsv + rtv, IncPC ]
 execute ms (Ternary MUL (R rd) (R rs) (R rt))
                      = let rsv = (regs ms) ! rs
                            rtv = (regs ms) ! rt in
                        return [ SetReg rd (rsv * rtv),
-                                SetNZP $ calcNZPVal $ rsv * rtv, IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ rsv * rtv, IncPC ]
 execute ms (Ternary SUB (R rd) (R rs) (R rt)) 
                      = let rsv = (regs ms) ! rs
                            rtv = (regs ms) ! rt in
                        return [ SetReg rd (rsv - rtv),
-                                SetNZP $ calcNZPVal $ rsv - rtv, IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ rsv - rtv, IncPC ]
 execute ms (Ternary DIV (R rd) (R rs) (R rt)) 
                      = let rsv = (regs ms) ! rs
                            rtv = (regs ms) ! rt in
                        return [ SetReg rd (rsv `div` rtv),
-                                SetNZP $ calcNZPVal $ rsv `div` rtv, IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ rsv `div` rtv, IncPC ]
 execute ms (Ternary ADD (R rd) (R rs) (IMM i))
                      = let rsv = (regs ms) ! rs in
                        return [ SetReg rd $ rsv + (intToWord16 i),
-                                SetNZP $ calcNZPVal $ rsv + (intToWord16 i), IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ rsv + (intToWord16 i), IncPC ]
 execute ms (Ternary MOD (R rd) (R rs) (R rt))
                      = let rsv = (regs ms) ! rs
                            rtv = (regs ms) ! rt in
@@ -175,25 +175,25 @@ execute ms (Ternary AND (R rd) (R rs) (R rt))
                      = let rsv = (regs ms) ! rs
                            rtv = (regs ms) ! rt in
                        return [ SetReg rd $ rsv .&. rtv,
-                                SetNZP $ calcNZPVal $ rsv .&. rtv, IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ rsv .&. rtv, IncPC ]
 execute ms (Binary NOT (R rd) (R rs))
                      = let rsv = (regs ms) ! rs in
                        return [ SetReg rd $ complement rsv,
-                                SetNZP $ calcNZPVal $ complement rsv, IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ complement rsv, IncPC ]
 execute ms (Ternary OR (R rd) (R rs) (R rt)) 
                      = let rsv = (regs ms) ! rs
                            rtv = (regs ms) ! rt in
                        return [ SetReg rd $ rsv .|. rtv,
-                                SetNZP $ calcNZPVal $ rsv .|. rtv, IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ rsv .|. rtv, IncPC ]
 execute ms (Ternary XOR (R rd) (R rs) (R rt)) 
                      = let rsv = (regs ms) ! rs
                            rtv = (regs ms) ! rt in
                        return [ SetReg rd $ rsv `xor` rtv,
-                                SetNZP $ calcNZPVal $ rsv `xor` rtv, IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ rsv `xor` rtv, IncPC ]
 execute ms (Ternary AND (R rd) (R rs) (IMM i)) 
                      = let rsv = (regs ms) ! rs in
                        return [ SetReg rd $ rsv .&. (intToWord16 i),
-                                SetNZP $ calcNZPVal $ rsv .&. (intToWord16 i), IncPC ]
+                                SetNZP $ calcNZPVal $ word16ToInt16 $ rsv .&. (intToWord16 i), IncPC ]
 -------------------------------------------------------------------------------
 ---------------------------------- SHIFTS -------------------------------------
 -------------------------------------------------------------------------------
@@ -218,7 +218,8 @@ execute ms (Ternary LDR (R rd) (R rs) (IMM i))
                            addr = (word16ToInt rsv) + i
                            val = (memory ms) ! addr in
                        case val of
-                          DataVal d -> return [SetReg rd d, IncPC]
+                          DataVal d -> return [SetReg rd d,
+                                               SetNZP $ calcNZPVal d, IncPC]
                           _ -> throwError $ SomeError "LDR" -- NEED ERROR
 execute ms (Ternary STR (R rd) (R rs) (IMM i))
                      = let rsv = (regs ms) ! rs

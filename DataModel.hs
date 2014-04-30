@@ -51,8 +51,8 @@ data BinaryOp =  CMP | CMPU | CMPI | CMPIU | NOT
                | LEA | LC
                deriving (Show, Eq)
 
-data TernaryOp = ADD | MUL | SUB | DIV | ADDI
-               | AND | OR | XOR | ANDI
+data TernaryOp = ADD | MUL | SUB | DIV
+               | AND | OR | XOR
                | LDR | STR               
                | SLL | SRA | SRL | MOD
                deriving (Show, Eq)

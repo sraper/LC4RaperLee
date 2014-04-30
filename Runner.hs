@@ -9,6 +9,7 @@ import Execute
 import ParserCombinators
 import Test.HUnit hiding (Label)
 import DataModel
+import Debug.Trace
 {-}
 execS :: Insn -> MachineState -> MachineState
 execS insn = execState (execute insn)
@@ -27,15 +28,14 @@ populateMemory xs ms = Prelude.foldl pop (ms { pc = 0 }) xs where
         Directive _        -> acc
         Memory t           -> acc { memory = (memory acc) // [(fromIntegral (pc acc), t)],
                               pc = (pc acc) + 1 }
-        Label s            -> acc { labels = Map.insert s (pc acc) (labels acc),
-                              pc = (pc acc) + 1 }
+        Label s            -> acc { labels = Map.insert s (pc acc) (labels acc) }
 
 runLC4 :: LC4 -> IO ()
 runLC4 insns = let ms = populateMemory insns emptyMachine
                    ms' = execProg (ms { pc = 0 }) in
                case ms' of
                  Left x     -> print $ show x
-                 Right ms'' -> printMS ms''
+                 Right ms'' -> print ms''
 
 execProg :: MachineState -> ErrExec MachineState
 execProg ms = let insn = (memory ms) ! (fromIntegral (pc ms)) in
@@ -43,10 +43,10 @@ execProg ms = let insn = (memory ms) ! (fromIntegral (pc ms)) in
                 DataVal _ -> Right ms -- MIGHT NOT BE NOP THAT WE WANT AS FINAL
                 InsnVal i -> case execS i ms of --execProg $ execState (execute i) ms
                                Left x    -> Left x
-                               Right ms' -> execProg ms'
+                               Right ms' -> trace ("insn = " ++ (show i)) execProg ms'
 
 main :: IO ()
-main = do s <- parseFromFile lc4P "basic.asm"
+main = do s <- parseFromFile lc4P "BRtest.asm"
           case s of
             (Left _) -> print "f up"
             (Right x) -> runLC4 x
@@ -153,10 +153,18 @@ tADD :: Test
 tADD = execS (Ternary ADD (R 1) (R 2) (R 3)) simpMachine ~?= (Right $  
        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 5)], nzp = (False, False, True) })
 
+tADDI :: Test
+tADDI = execS (Ternary ADD (R 1) (R 2) (IMM (-7))) simpMachine ~?= (Right $
+        simpMachine {pc = 1, regs = (regs simpMachine) // [(1, -5)], nzp = (True, False, False)})
+
 tSUB :: Test
 tSUB = execS (Ternary SUB (R 1) (R 2) (R 3)) m ~?= (Right $ 
        m { pc = 1, regs = (regs m) // [(1, 3)], nzp = (False, False, True) })
        where m = simpMachine { regs = (regs simpMachine) // [(3, -1)] }
+
+tSUB2 :: Test
+tSUB2 = execS (Ternary SUB (R 1) (R 2) (R 3)) simpMachine ~?= (Right $ 
+        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 3)], nzp = (True, False, False) })
 
 tADD2 :: Test
 tADD2 = execS (Ternary ADD (R 1) (R 2) (IMM 3)) simpMachine ~?= (Right $  
@@ -190,7 +198,7 @@ tSRL = execS (Ternary SRA (R 1) (R 2) (IMM 2)) m ~?= (Right $
 
 tLDR :: Test
 tLDR = execS (Ternary LDR (R 1) (R 2) (IMM 3)) m ~?= (Right $ 
-       m { pc = 1, regs = (regs m) // [(1, 10)] })
+       m { pc = 1, regs = (regs m) // [(1, 10)], nzp = (False, False, True) })
        where m = simpMachine { memory = (memory simpMachine) // [(5, DataVal 10)] }
 
 tSTR :: Test
