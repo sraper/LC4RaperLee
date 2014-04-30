@@ -1,3 +1,4 @@
+{-# OPTIONS -XFlexibleInstances -XMultiParamTypeClasses -XFlexibleContexts #-}
 module MachineStateWrapper ( MachineState(pc, nzp, regs, priv, memory, labels), 
                              StateM, get, aPut, execState,
                              Delta, simpMachine, emptyMachine,
@@ -11,6 +12,7 @@ import Data.Map as Map
 import Data.Word (Word16)
 import Data.Int (Int16)
 import DataModel
+import Control.Monad.State.Class hiding (state)
 
 data MachineState = 
      MachineState { pc :: Word16,
@@ -85,22 +87,28 @@ evalState st = fst . runState st
 execState :: StateM s a -> s -> s
 execState st = snd . runState st
 
-get :: StateM s s
+instance MonadState s (StateM s) where
+    get = state $ \s -> (s,s)
+    put s = state $ \_ -> ((),s)
+{-get :: StateM s s
 get = state $ \s -> (s,s)
 
 put :: s -> StateM s ()
 put s' = S $ \s -> ( (), s' )
+-}
+aPut :: Delta -> StateM MachineState ()
+aPut = aPut'
 
 -- | Atomic put function
-aPut :: Delta -> StateM MachineState ()
-aPut []     = return ()
-aPut (x:xs) = do ms <- get
-                 case x of
-                     SetPC v         -> put $ ms { pc = v }
-                     IncPC           -> put $ ms { pc = (pc ms) + 1 }
-                     SetNZP v        -> put $ ms { nzp = v }
-                     SetReg r v      -> put $ ms { regs = (regs ms) // [(r, v)] }
-                     SetPriv v       -> put $ ms { priv = v }
-                     SetMem i v      -> put $ ms { memory = (memory ms) // [(i, v)] }
-                     SetLabel l v    -> put $ ms { labels = (Map.insert l v (labels ms)) }
-                 aPut xs             
+aPut' :: (MonadState MachineState m) => Delta -> m ()
+aPut' []     = return ()
+aPut' (x:xs) = do ms <- get
+                  case x of
+                      SetPC v         -> put $ ms { pc = v }
+                      IncPC           -> put $ ms { pc = (pc ms) + 1 }
+                      SetNZP v        -> put $ ms { nzp = v }
+                      SetReg r v      -> put $ ms { regs = (regs ms) // [(r, v)] }
+                      SetPriv v       -> put $ ms { priv = v }
+                      SetMem i v      -> put $ ms { memory = (memory ms) // [(i, v)] }
+                      SetLabel l v    -> put $ ms { labels = (Map.insert l v (labels ms)) }
+                  aPut' xs             

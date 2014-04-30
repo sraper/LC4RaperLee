@@ -1,5 +1,6 @@
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults  #-}
-
+{-# LANGUAGE TypeSynonymInstances, FlexibleContexts, NoMonomorphismRestriction, 
+    FlexibleInstances #-}
 module Execute where
 
 import MachineStateWrapper
@@ -12,6 +13,8 @@ import qualified Data.Map as Map
 import Debug.Trace
 import MachineStateWrapper()
 import DataModel
+import Control.Monad.State.Class
+import Control.Monad.Error.Class
 
 --NOT NEEDED
 -- | Helper that converts binary string to integer
@@ -37,224 +40,200 @@ calcNZPVal x = if x < 0
                then (True, False, False) -- N
                else (False, False, True) -- P
 
-branchLogic :: MachineState -> Tok -> Bool -> StateM MachineState ()
+branchLogic :: MachineState -> Tok -> Bool -> ErrExec Delta --StateM MachineState ()
 branchLogic ms t b = if b
                      then case t of
-                          LABEL l -> aPut [SetPC $ (Map.findWithDefault 0 l $ labels ms) + 1]
-                          IMM i   -> aPut [SetPC ((pc ms ) + 1 + (fromIntegral i))]
-                          _       -> aPut [IncPC] --NEED ERROR
-                     else aPut [IncPC]
+                          LABEL l -> return [SetPC $ (Map.findWithDefault 0 l $ labels ms) + 1]
+                          IMM i   -> return [SetPC ((pc ms ) + 1 + (fromIntegral i))]
+                          _       -> throwError $ SomeError "BRANCH" --NEED ERROR
+                     else return [IncPC]
 {-}
 arithLogic :: (Num a, Integral a) => MachineState -> (a -> a -> a) -> Tok -> Tok -> Tok -> StateM MachineState ()
 arithLogic ms f (R rd) (R rs) (R rt) = let rsv = (regs ms) ! rs
                                            rtv = (regs ms) ! rt in
-                                       aPut [ SetReg rd $ rsv `f` rtv,
+                                       return [ SetReg rd $ rsv `f` rtv,
                                               SetNZP $ calcNZPVal $ rsv `f` rtv,
                                               IncPC ]
 -}
 
-data ErrMachine a = ErrorT String (StateM MachineState a)
+type ErrExec = Either ExecutionError
 
-execute :: Insn -> StateM MachineState ()
-execute (Single NOP) = aPut [IncPC]
+data ExecutionError = SomeError String
+                    | NoSuchInstruction String
+                    deriving (Eq)
+
+instance Error ExecutionError where
+    noMsg = SomeError "Message"
+    strMsg s = SomeError s
+
+instance Show ExecutionError where
+    show (SomeError bad) = show bad
+    show (NoSuchInstruction insn) = show $ "There is no instruction called " ++ insn
+
+execute :: MachineState -> Insn -> ErrExec Delta
+--execute :: Insn -> StateM MachineState ()
+--execute :: (MonadState MachineState m, MonadError String m) => Insn -> m ()
+execute ms (Single NOP) = return [IncPC]
 -------------------------------------------------------------------------------
 --------------------------------- PC UPDATES ----------------------------------
 -------------------------------------------------------------------------------
-execute (Single RTI) = do ms <- get
-                          let r7v = (regs ms) ! 7
-                          aPut [ SetPriv False, SetPC r7v ]
-execute (Unary JSRR (R rs)) 
-                     = do ms <- get
-                          aPut [ SetReg 7 $ 1 + (pc ms),
+execute ms (Single RTI) = let r7v = (regs ms) ! 7 in
+                          return [ SetPriv False, SetPC r7v ]
+execute ms (Unary JSRR (R rs)) 
+                     = return [ SetReg 7 $ 1 + (pc ms),
                                  SetNZP $ calcNZPVal $ 1 + (pc ms),
                                  SetPC $ (regs ms) ! rs ]
 -- NO JSR RIGHT NOW
-execute (Unary JMP t)
-                     = do ms <- get
-                          let add = case t of
-                                 LABEL l -> Map.findWithDefault 0 l $ labels ms
-                                 IMM i   -> intToWord16 i
-                                 _       -> 0 --NEED ERROR
-                          aPut [ SetPC $ (pc ms) + 1 + add ]
-execute (Unary JMPR (R rs)) 
-                     = do ms <- get
-                          aPut [ SetPC $ (regs ms) ! rs ]
-execute (Single RET)
-                     = execute (Unary JMPR (R 7))
-execute (Unary TRAP (IMM i)) 
-                     = do ms <- get
-                          let newpcv = i + 0x8000
-                          aPut [ SetReg 7 $ (pc ms) + 1,
-                                 SetPriv True,
-                                 SetNZP $ calcNZPVal $ (pc ms) + 1,
-                                 SetPC $ fromIntegral newpcv ]
+execute ms (Unary JMP t)
+                     = case t of
+                         LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
+                                      return [ SetPC $ (pc ms) + 1 + add ]
+                         IMM i   -> let add = intToWord16 i in
+                                      return [ SetPC $ (pc ms) + 1 + add ]
+                         _       -> throwError $ SomeError "JMP"
+execute ms (Unary JMPR (R rs)) 
+                     = return [ SetPC $ (regs ms) ! rs ]
+execute ms (Single RET)
+                     = execute ms (Unary JMPR (R 7))
+execute ms (Unary TRAP (IMM i)) 
+                     = let newpcv = i + 0x8000 in
+                       return [ SetReg 7 $ (pc ms) + 1,
+                              SetPriv True,
+                              SetNZP $ calcNZPVal $ (pc ms) + 1,
+                              SetPC $ fromIntegral newpcv ]
 -------------------------------------------------------------------------------
 ---------------------------------- BRANCHES -----------------------------------
 -------------------------------------------------------------------------------
-execute (Unary BRn l)
-                     = do ms <- get
-                          branchLogic ms l (matchNZPs ms "N")
-execute (Unary BRnz l)
-                     = do ms <- get
-                          branchLogic ms l (matchNZPs ms "NZ")
-execute (Unary BRz l)
-                     = do ms <- get
-                          branchLogic ms l (matchNZPs ms "Z")
-execute (Unary BRzp l)
-                     = do ms <- get
-                          branchLogic ms l (matchNZPs ms "ZP")
-execute (Unary BRnp l)
-                     = do ms <- get
-                          branchLogic ms l (matchNZPs ms "NP")
-execute (Unary BRp l)
-                     = do ms <- get
-                          branchLogic ms l (matchNZPs ms "P")
-execute (Unary BRnzp l)
-                     = do ms <- get
-                          branchLogic ms l (matchNZPs ms "NZP")
+
+execute ms (Unary BRn l)   = branchLogic ms l (matchNZPs ms "N")
+execute ms (Unary BRnz l)  = branchLogic ms l (matchNZPs ms "NZ")
+execute ms (Unary BRz l)   = branchLogic ms l (matchNZPs ms "Z")
+execute ms (Unary BRzp l)  = branchLogic ms l (matchNZPs ms "ZP")
+execute ms (Unary BRnp l)  = branchLogic ms l (matchNZPs ms "NP")
+execute ms (Unary BRp l)   = branchLogic ms l (matchNZPs ms "P")
+execute ms (Unary BRnzp l) = branchLogic ms l (matchNZPs ms "NZP")
 -------------------------------------------------------------------------------
 --------------------------------- COMPARES ------------------------------------
 -------------------------------------------------------------------------------
-execute (Binary CMP (R rs) (R rt))
-                     = do ms <- get
-                          let rsv = word16ToInt16 $ (regs ms) ! rs
-                              rtv = word16ToInt16 $ (regs ms) ! rt
-                          aPut [ SetNZP $ calcNZPVal $ rsv - rtv, IncPC ]
-execute (Binary CMPU (R rs) (R rt))
-                     = do ms <- get
-                          let rsv = word16ToInt $ (regs ms) ! rs
-                              rtv = word16ToInt $ (regs ms) ! rt
-                          aPut [ SetNZP $ calcNZPVal $ rsv - rtv, IncPC ]
-execute (Binary CMPI (R rs) (IMM i))
-                     = do ms <- get
-                          let rsv = word16ToInt16 $ (regs ms) ! rs
-                              iv = (fromIntegral i) :: Int16
-                          aPut [ SetNZP $ calcNZPVal $ rsv - iv, IncPC ]
-execute (Binary CMPIU (R rs) (IMM i))
-                     = do ms <- get
-                          let rsv = word16ToInt $ (regs ms) ! rs
-                              unsignedi = (fromIntegral i) :: Word16
-                              expandi = (fromIntegral unsignedi) :: Int
-                          aPut [ SetNZP $ calcNZPVal $ rsv - expandi, IncPC ]
+execute ms (Binary CMP (R rs) (R rt))
+                     = let rsv = word16ToInt16 $ (regs ms) ! rs
+                           rtv = word16ToInt16 $ (regs ms) ! rt in
+                       return [ SetNZP $ calcNZPVal $ rsv - rtv, IncPC ]
+execute ms (Binary CMPU (R rs) (R rt))
+                     = let rsv = word16ToInt $ (regs ms) ! rs
+                           rtv = word16ToInt $ (regs ms) ! rt in
+                       return [ SetNZP $ calcNZPVal $ rsv - rtv, IncPC ]
+execute ms (Binary CMPI (R rs) (IMM i))
+                     = let rsv = word16ToInt16 $ (regs ms) ! rs
+                           iv = (fromIntegral i) :: Int16 in
+                       return [ SetNZP $ calcNZPVal $ rsv - iv, IncPC ]
+execute ms (Binary CMPIU (R rs) (IMM i))
+                     = let rsv = word16ToInt $ (regs ms) ! rs
+                           unsignedi = (fromIntegral i) :: Word16
+                           expandi = (fromIntegral unsignedi) :: Int in
+                       return [ SetNZP $ calcNZPVal $ rsv - expandi, IncPC ]
 -------------------------------------------------------------------------------
 ------------------------------ ARITHMETIC OPS ---------------------------------
 -------------------------------------------------------------------------------
-execute (Ternary ADD (R rd) (R rs) (R rt))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              rtv = (regs ms) ! rt
-                          aPut [ SetReg rd (rsv + rtv),
-                                 SetNZP $ calcNZPVal $ rsv + rtv, IncPC ]
-execute (Ternary MUL (R rd) (R rs) (R rt))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              rtv = (regs ms) ! rt
-                          aPut [ SetReg rd (rsv * rtv),
-                                 SetNZP $ calcNZPVal $ rsv * rtv, IncPC ]
-execute (Ternary SUB (R rd) (R rs) (R rt)) 
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              rtv = (regs ms) ! rt
-                          aPut [ SetReg rd (rsv - rtv),
-                                 SetNZP $ calcNZPVal $ rsv - rtv, IncPC ]
-execute (Ternary DIV (R rd) (R rs) (R rt)) 
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              rtv = (regs ms) ! rt
-                          aPut [ SetReg rd (rsv `div` rtv),
-                                 SetNZP $ calcNZPVal $ rsv `div` rtv, IncPC ]
-execute (Ternary ADD (R rd) (R rs) (IMM i))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                          aPut [ SetReg rd $ rsv + (intToWord16 i),
-                                 SetNZP $ calcNZPVal $ rsv + (intToWord16 i), IncPC ]
-execute (Ternary MOD (R rd) (R rs) (R rt))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              rtv = (regs ms) ! rt
-                          aPut [ SetReg rd (rsv `mod` rtv),
-                                 SetNZP $ calcNZPVal $ rsv `mod` rtv, IncPC ]
+execute ms (Ternary ADD (R rd) (R rs) (R rt))
+                     = let rsv = (regs ms) ! rs
+                           rtv = (regs ms) ! rt in
+                       return [ SetReg rd (rsv + rtv),
+                                SetNZP $ calcNZPVal $ rsv + rtv, IncPC ]
+execute ms (Ternary MUL (R rd) (R rs) (R rt))
+                     = let rsv = (regs ms) ! rs
+                           rtv = (regs ms) ! rt in
+                       return [ SetReg rd (rsv * rtv),
+                                SetNZP $ calcNZPVal $ rsv * rtv, IncPC ]
+execute ms (Ternary SUB (R rd) (R rs) (R rt)) 
+                     = let rsv = (regs ms) ! rs
+                           rtv = (regs ms) ! rt in
+                       return [ SetReg rd (rsv - rtv),
+                                SetNZP $ calcNZPVal $ rsv - rtv, IncPC ]
+execute ms (Ternary DIV (R rd) (R rs) (R rt)) 
+                     = let rsv = (regs ms) ! rs
+                           rtv = (regs ms) ! rt in
+                       return [ SetReg rd (rsv `div` rtv),
+                                SetNZP $ calcNZPVal $ rsv `div` rtv, IncPC ]
+execute ms (Ternary ADD (R rd) (R rs) (IMM i))
+                     = let rsv = (regs ms) ! rs in
+                       return [ SetReg rd $ rsv + (intToWord16 i),
+                                SetNZP $ calcNZPVal $ rsv + (intToWord16 i), IncPC ]
+execute ms (Ternary MOD (R rd) (R rs) (R rt))
+                     = let rsv = (regs ms) ! rs
+                           rtv = (regs ms) ! rt in
+                       return [ SetReg rd (rsv `mod` rtv),
+                                SetNZP $ calcNZPVal $ rsv `mod` rtv, IncPC ]
 -------------------------------------------------------------------------------
 ------------------------------- LOGICAL OPS -----------------------------------
 -------------------------------------------------------------------------------
-execute (Ternary AND (R rd) (R rs) (R rt))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              rtv = (regs ms) ! rt
-                          aPut [ SetReg rd $ rsv .&. rtv,
-                                 SetNZP $ calcNZPVal $ rsv .&. rtv, IncPC ]
-execute (Binary NOT (R rd) (R rs))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                          aPut [ SetReg rd $ complement rsv,
-                                 SetNZP $ calcNZPVal $ complement rsv, IncPC ]
-execute (Ternary OR (R rd) (R rs) (R rt)) 
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              rtv = (regs ms) ! rt
-                          aPut [ SetReg rd $ rsv .|. rtv,
-                                 SetNZP $ calcNZPVal $ rsv .|. rtv, IncPC ]
-execute (Ternary XOR (R rd) (R rs) (R rt)) 
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              rtv = (regs ms) ! rt
-                          aPut [ SetReg rd $ rsv `xor` rtv,
-                                 SetNZP $ calcNZPVal $ rsv `xor` rtv, IncPC ]
-execute (Ternary AND (R rd) (R rs) (IMM i)) 
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                          aPut [ SetReg rd $ rsv .&. (intToWord16 i),
-                                 SetNZP $ calcNZPVal $ rsv .&. (intToWord16 i), IncPC ]
+execute ms (Ternary AND (R rd) (R rs) (R rt))
+                     = let rsv = (regs ms) ! rs
+                           rtv = (regs ms) ! rt in
+                       return [ SetReg rd $ rsv .&. rtv,
+                                SetNZP $ calcNZPVal $ rsv .&. rtv, IncPC ]
+execute ms (Binary NOT (R rd) (R rs))
+                     = let rsv = (regs ms) ! rs in
+                       return [ SetReg rd $ complement rsv,
+                                SetNZP $ calcNZPVal $ complement rsv, IncPC ]
+execute ms (Ternary OR (R rd) (R rs) (R rt)) 
+                     = let rsv = (regs ms) ! rs
+                           rtv = (regs ms) ! rt in
+                       return [ SetReg rd $ rsv .|. rtv,
+                                SetNZP $ calcNZPVal $ rsv .|. rtv, IncPC ]
+execute ms (Ternary XOR (R rd) (R rs) (R rt)) 
+                     = let rsv = (regs ms) ! rs
+                           rtv = (regs ms) ! rt in
+                       return [ SetReg rd $ rsv `xor` rtv,
+                                SetNZP $ calcNZPVal $ rsv `xor` rtv, IncPC ]
+execute ms (Ternary AND (R rd) (R rs) (IMM i)) 
+                     = let rsv = (regs ms) ! rs in
+                       return [ SetReg rd $ rsv .&. (intToWord16 i),
+                                SetNZP $ calcNZPVal $ rsv .&. (intToWord16 i), IncPC ]
 -------------------------------------------------------------------------------
 ---------------------------------- SHIFTS -------------------------------------
 -------------------------------------------------------------------------------
-execute (Ternary SLL (R rd) (R rs) (IMM i))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                          aPut [ SetReg rd $ shiftL rsv i,
-                                 SetNZP $ calcNZPVal $ shiftL rsv i, IncPC ]
-execute (Ternary SRL (R rd) (R rs) (IMM i))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                          aPut [ SetReg rd $ shiftR rsv i,
-                                 SetNZP $ calcNZPVal $ shiftR rsv i, IncPC ]
-execute (Ternary SRA (R rd) (R rs) (IMM i))
-                     = do ms <- get
-                          let rsv = fromIntegral ((regs ms) ! rs) :: Int16
-                              shifted = fromIntegral $ shiftR rsv i :: Word16
-                          aPut [ SetReg rd shifted,
-                                 SetNZP $ calcNZPVal $ shiftR rsv i, IncPC ]
+execute ms (Ternary SLL (R rd) (R rs) (IMM i))
+                     = let rsv = (regs ms) ! rs in
+                       return [ SetReg rd $ shiftL rsv i,
+                                SetNZP $ calcNZPVal $ shiftL rsv i, IncPC ]
+execute ms (Ternary SRL (R rd) (R rs) (IMM i))
+                     = let rsv = (regs ms) ! rs in
+                       return [ SetReg rd $ shiftR rsv i,
+                                SetNZP $ calcNZPVal $ shiftR rsv i, IncPC ]
+execute ms (Ternary SRA (R rd) (R rs) (IMM i))
+                     = let rsv = fromIntegral ((regs ms) ! rs) :: Int16
+                           shifted = fromIntegral $ shiftR rsv i :: Word16 in
+                       return [ SetReg rd shifted,
+                                SetNZP $ calcNZPVal $ shiftR rsv i, IncPC ]
 -------------------------------------------------------------------------------
 ------------------------------ MEMORY ACCESS ----------------------------------
 -------------------------------------------------------------------------------
-execute (Ternary LDR (R rd) (R rs) (IMM i))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              addr = (word16ToInt rsv) + i
-                              val = (memory ms) ! addr
-                          case val of
-                             DataVal d -> aPut [SetReg rd d, IncPC]
-                             _ -> return () -- NEED ERROR
-execute (Ternary STR (R rd) (R rs) (IMM i))
-                     = do ms <- get
-                          let rsv = (regs ms) ! rs
-                              addr = (word16ToInt rsv) + i
-                              val = (regs ms) ! rd
-                          aPut [ SetMem addr $ DataVal val, IncPC ]
-execute (Binary CONST (R rd) (IMM i))
-                     = aPut [ SetReg rd $ intToWord16 i,
-                              SetNZP $ calcNZPVal i, IncPC ]
-execute (Binary LEA (R r1) (LABEL l))
-                     = do ms <- get
-                          let addr = Map.findWithDefault 0 l $ labels ms
-                          aPut [ SetReg r1 addr, 
-                                 SetNZP $ calcNZPVal addr, IncPC ]
-execute (Binary LC (R r1) (LABEL l))
-                     = do ms <- get
-                          let addr = Map.findWithDefault 0 l $ labels ms
-                              val = (memory ms) ! word16ToInt addr
-                          case val of
-                             DataVal d -> aPut [SetReg r1 d, 
-                                                SetNZP $ calcNZPVal d, IncPC]
-                             _ -> return () -- NEED ERROR
-execute _ = do traceM "failed"
+execute ms (Ternary LDR (R rd) (R rs) (IMM i))
+                     = let rsv = (regs ms) ! rs
+                           addr = (word16ToInt rsv) + i
+                           val = (memory ms) ! addr in
+                       case val of
+                          DataVal d -> return [SetReg rd d, IncPC]
+                          _ -> throwError $ SomeError "LDR" -- NEED ERROR
+execute ms (Ternary STR (R rd) (R rs) (IMM i))
+                     = let rsv = (regs ms) ! rs
+                           addr = (word16ToInt rsv) + i
+                           val = (regs ms) ! rd in
+                       return [ SetMem addr $ DataVal val, IncPC ]
+execute ms (Binary CONST (R rd) (IMM i))
+                     = return [ SetReg rd $ intToWord16 i,
+                                SetNZP $ calcNZPVal i, IncPC ]
+execute ms (Binary LEA (R r1) (LABEL l))
+                     = let addr = Map.findWithDefault 0 l $ labels ms in
+                       return [ SetReg r1 addr, 
+                                SetNZP $ calcNZPVal addr, IncPC ]
+execute ms (Binary LC (R r1) (LABEL l))
+                     = let addr = Map.findWithDefault 0 l $ labels ms
+                           val = (memory ms) ! word16ToInt addr in
+                       case val of
+                          DataVal d -> return [SetReg r1 d, 
+                                               SetNZP $ calcNZPVal d, IncPC]
+                          _ -> throwError $ SomeError "LC" -- NEED ERROR
+execute _ _ = throwError $ NoSuchInstruction "sup"
+
