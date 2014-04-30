@@ -23,7 +23,7 @@ populateMemory xs ms = Prelude.foldl pop (ms { pc = 0 }) xs where
                                 0 -> acc
                                 x -> acc { pc = (pc acc) + (16 - x) }
         Directive (ADDR a) -> acc { pc = a }
-        Directive (FILL v) -> acc { memory = (memory acc) // [(fromIntegral (pc acc), DataVal v)] }
+        Directive (FILL v) -> acc { memory = (memory acc) // [(fromIntegral (pc acc), DataVal v)], pc = (pc acc) + 1 }
         Directive (BLKW v) -> acc { pc = (pc acc) + v }
         Directive _        -> acc
         Memory t           -> acc { memory = (memory acc) // [(fromIntegral (pc acc), t)],
@@ -45,13 +45,13 @@ execProg ms = let insn = (memory ms) ! (fromIntegral (pc ms)) in
                                Left x    -> Left x
                                Right ms' -> trace ("insn = " ++ (show i)) execProg ms'
 
-main :: IO ()
-main = do s <- parseFromFile lc4P "fibonacci.asm"
-          case s of
-            (Left _) -> print "f up"
-            (Right x) -> runLC4 x
-          return ()
-
+main :: String -> IO ()
+main st = do s <- parseFromFile lc4P st
+             case s of
+               (Left _) -> print "f up"
+               (Right x) -> runLC4 x
+             return ()
+   
 testPopulateMemory :: String -> IO ()
 testPopulateMemory file = do s <- parseFromFile lc4P file
                              case s of

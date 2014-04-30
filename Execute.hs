@@ -109,7 +109,6 @@ execute ms (Unary TRAP (IMM i))
 -------------------------------------------------------------------------------
 ---------------------------------- BRANCHES -----------------------------------
 -------------------------------------------------------------------------------
-
 execute ms (Unary BRn l)   = branchLogic ms l (matchNZPs ms "N")
 execute ms (Unary BRnz l)  = branchLogic ms l (matchNZPs ms "NZ")
 execute ms (Unary BRz l)   = branchLogic ms l (matchNZPs ms "Z")

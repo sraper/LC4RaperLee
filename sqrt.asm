@@ -9,6 +9,7 @@
 .CODE		; This is a code segment
 .ADDR  0x0000	; Start filling in instructions at address 0x00
 
+	CONST R0, 50
 	CONST R1, #0    ; Initializa B to 0
 
 	CMPI R0 #0	; Compare A to 0

@@ -10,7 +10,9 @@
 
 ;; Start of the code section
 	.CODE
-	.ADDR 0x0000		; Start the code at address 0x0000
+	.ADDR x0000		; Start the code at address 0x0000
+
+	CONST R0, #5
 INIT
 
 	CMPI R0, #1		; compare R0 to 1
