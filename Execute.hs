@@ -88,6 +88,7 @@ execute ms (Unary JSR t)
                      = case t of
                          LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
                                         return [ SetPC add ]
+                         
                          _       -> throwError $ SomeError "JSR"
 execute ms (Unary JMP t)
                      = case t of
