@@ -56,7 +56,7 @@ testPopulateMemory :: String -> IO ()
 testPopulateMemory file = do s <- parseFromFile lc4P file
                              case s of
                                (Left _) -> print "f up"
-                               (Right x) -> printMS $ populateMemory x emptyMachine
+                               (Right x) -> print $ populateMemory x emptyMachine
                              return ()
 {-}
 runOneInsn :: Insn -> IO ()

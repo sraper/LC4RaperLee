@@ -56,7 +56,7 @@ emptyMachine = MachineState {
                  nzp = (False, False, False),
                  regs = Data.Vector.replicate 7 0,
                  priv = False,
-                 memory = Data.Vector.replicate 10 (DataVal 0),
+                 memory = Data.Vector.replicate 65535 (DataVal 0),
                  labels = Map.empty
                 }
 

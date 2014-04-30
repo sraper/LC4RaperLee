@@ -88,7 +88,7 @@ hexP = do _ <- sP $ once $ char ','
 
 labelTokP :: Parser Tok
 labelTokP = do _ <- sP $ once $ char ','
-               s <- sP $ many1 notNewLineP
+               s <- sP $ many1 notNewLineOrSpaceP
                return $ LABEL s
 
 tokenP :: Parser Tok
@@ -248,6 +248,9 @@ sDir = ".ADDR #      5  ; what"
 sLabel :: String
 sLabel = "BEGIN"
 
+sBRz :: String
+sBRz = "BRz ZERO        ; R3 = 0"
+
 sProg :: String
 sProg = "\n \t " ++ sLabel ++ "      \n" ++ sComment ++  "\n" ++ sJMP ++ "\n" ++ sADDI
 
@@ -282,6 +285,9 @@ t7 :: Test
 t7 = parse lineP sDir ~?=
      Right ( Directive $ ADDR 5)
 
+t7a :: Test
+t7a = parse lineP sBRz ~?= Right ( Memory $ InsnVal $ Unary BRz (LABEL "ZERO") )
+
 t8 :: Test
 t8 = TestList ["s1" ~: p "sample.asm" ] where
    p s = parseFromFile lc4P s >>= succeed
@@ -300,9 +306,17 @@ t9 = do p <- parseFromFile lc4P "sample.asm"
         _ <- runTestTT bool
         return ()
 
-t10 :: Test
-t10 = parse lc4P (sJMP ++ sDir) ~?= Right( [Directive DATA,Directive CODE,Directive (ICONST "WHAT" 132),Memory (InsnVal (Unary BRnzp (IMM 118))),Memory (InsnVal (Unary BRzp (IMM (-4)))),Comment,Label "BEGIN",Memory (InsnVal (Binary CONST (R 1) (IMM 1))),Memory (InsnVal (Ternary ADDI (R 1) (R 1) (IMM 2))),Memory (InsnVal (Ternary ADDI (R 2) (R 1) (IMM 171))),Memory (InsnVal (Ternary SUB (R 1) (R 2) (R 1))),Comment,Memory (InsnVal (Single NOP)),Directive FALIGN,Label "END"] )
-
+t10 :: IO ()
+t10 = do p <- parseFromFile lc4P "BRtest.asm"
+         let bool = p ~?= Right [ Comment,
+              Label "BEGIN",
+              Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
+              Memory $ InsnVal $ Ternary ADDI (R 1) (R 1) (IMM 2),
+              Memory $ InsnVal $ Ternary ADDI (R 2) (R 1) (IMM 171),
+              Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
+              Comment,Memory (InsnVal (Single NOP)),Label "END"] 
+         _ <- runTestTT bool
+         return ()
 main :: IO () 
 main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6, t7, t8 ])
           t9
