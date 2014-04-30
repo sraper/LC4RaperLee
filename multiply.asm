@@ -3,9 +3,11 @@
 ;; R0 = A, R1 = B, R2 = C
 
 	.CODE		; This is a code segment
-	.ADDR  0x0000	; Start filling in instructions at address 0x00
+	.ADDR  x0000	; Start filling in instructions at address 0x00
 
 	CONST R2, #0    ; Initialize C to 0
+	CONST R1, #4
+	CONST R0, #6
 
 LOOP
 

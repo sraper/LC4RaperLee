@@ -17,7 +17,7 @@ global_array
 
 	;; Start of the code section
 	.CODE
-	.ADDR 0x0000		; Start the code at address 0x0000
+	.ADDR x0000		; Start the code at address 0x0000
 INIT
 	LEA R0, global_array	; R0 contains the address of the data
 	CONST R1, #0		; initialize F_i to 0
