@@ -8,6 +8,7 @@ import Parser
 import Control.Monad
 import Data.Char
 import System.IO
+import Numeric
             
 type ParseError = String
 
@@ -26,15 +27,17 @@ parseFromFile parser filename = do
   handle <- openFile filename ReadMode 
   str <- hGetContents handle
   return $ parse parser str
-  
-  
+ 
+
 -- | Parsers for specific sorts of characters 
-alpha, digit, upper, lower, space :: Parser Char
+alpha, digit, upper, lower, space, alphaNum, hexDigit :: Parser Char
 alpha = satisfy isAlpha
 digit = satisfy isDigit            
 upper = satisfy isUpper
 lower = satisfy isLower
 space = satisfy isSpace
+alphaNum = satisfy isAlphaNum
+hexDigit = satisfy isHexDigit
 
 
 -- | Parses and returns the specified character        
@@ -53,7 +56,11 @@ int = do n <- string "-" <|> return []
          s <- many1 digit  
          return $ (read (n ++ s) :: Int)
 
--- | given a parser, apply it as many times as possible                         
+hex :: Parser Int
+hex = do s <- many1 hexDigit
+         return $ (fst . head . readHex) s
+
+-- | given a parser, apply it as many times as possible                       
 -- and return the answer in a list
 many   :: Parser a -> Parser [a]
 many p = many1 p <|> many0 

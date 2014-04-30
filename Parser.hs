@@ -9,6 +9,7 @@ module Parser (Parser,
                    choose,
                    (<|>),
                    satisfy,
+                   satisfyAll,
                    doParse,  
                    ) where
 
@@ -29,6 +30,15 @@ get = P (\cs -> case cs of
 satisfy :: (Char -> Bool) -> Parser Char
 satisfy p = do c <- get
                if (p c) then return c else fail "End of input"
+
+satisfyAll :: [(Char -> Bool)] -> Parser Char
+satisfyAll l = do c <- get
+                  if sat l c then return c
+                  else fail "End of input"
+   where sat [] _     = True
+         sat (x:xs) c = if (x c == False)
+                        then False
+                        else sat xs c
 
 instance Monad Parser where
    p1 >>= fp2 = P (\cs -> do (a,cs') <- doParse p1 cs 
