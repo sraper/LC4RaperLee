@@ -242,7 +242,7 @@ execute (Ternary STR (R rd) (R rs) (IMM i))
                               val = (regs ms) ! rd
                           aPut [ SetMem addr $ DataVal val, IncPC ]
 execute (Binary CONST (R rd) (IMM i))
-                     = aPut [ SetMem rd $ DataVal $ intToWord16 i,
+                     = aPut [ SetReg rd $ intToWord16 i,
                               SetNZP $ calcNZPVal i, IncPC ]
 execute (Binary LEA (R r1) (LABEL l))
                      = do ms <- get

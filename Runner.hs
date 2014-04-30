@@ -17,15 +17,21 @@ populateMemory :: LC4 -> MachineState -> MachineState
 populateMemory [] ms = ms
 populateMemory xs ms = Prelude.foldl pop (ms { pc = 0 }) xs where
     pop acc i = case i of
-        Comment     -> acc
-        Directive _ -> acc
-        Memory t    -> acc { memory = (memory acc) // [(fromIntegral (pc acc), t)],
-                         pc = (pc acc) + 1 }
-        Label s     -> acc { labels = Map.insert s (pc acc) (labels acc),
-                             pc = (pc acc) + 1 }
+        Comment            -> acc
+        Directive (FALIGN) -> case (pc acc) `mod` 16 of
+                                0 -> acc
+                                x -> acc { pc = (pc acc) + (16 - x) }
+        Directive (ADDR a) -> acc { pc = a }
+        Directive (FILL v) -> acc { memory = (memory acc) // [(fromIntegral (pc acc), DataVal v)] }
+        Directive (BLKW v) -> acc { pc = (pc acc) + v }
+        Directive _        -> acc
+        Memory t           -> acc { memory = (memory acc) // [(fromIntegral (pc acc), t)],
+                              pc = (pc acc) + 1 }
+        Label s            -> acc { labels = Map.insert s (pc acc) (labels acc),
+                              pc = (pc acc) + 1 }
 
 runLC4 :: LC4 -> IO ()
-runLC4 insns = let ms = populateMemory insns simpMachine
+runLC4 insns = let ms = populateMemory insns emptyMachine
                    ms' = execProg (ms { pc = 0 }) in
                printMS ms'
 
@@ -36,18 +42,18 @@ execProg ms = let insn = (memory ms) ! (fromIntegral (pc ms)) in
                 InsnVal i -> execProg $ execState (execute i) ms
 
 main :: IO ()
-main = do s <- parseFromFile lc4P "sample.asm"
+main = do s <- parseFromFile lc4P "basic.asm"
           case s of
             (Left _) -> print "f up"
-            (Right x) -> runLC4 $ reverse x
+            (Right x) -> runLC4 x
           return ()
 
-testPopulateMemory :: IO ()
-testPopulateMemory = do s <- parseFromFile lc4P "sample.asm"
-                        case s of
-                          (Left _) -> print "f up"
-                          (Right x) -> printMS $ populateMemory x simpMachine
-                        return ()
+testPopulateMemory :: String -> IO ()
+testPopulateMemory file = do s <- parseFromFile lc4P file
+                             case s of
+                               (Left _) -> print "f up"
+                               (Right x) -> printMS $ populateMemory x emptyMachine
+                             return ()
 
 testExecuteJSRR :: IO ()
 testExecuteJSRR = let a = Unary JSRR (R 5)
@@ -72,7 +78,7 @@ printMS ms = do putStr "pc: "
                 putStr "labels: "
                 print $ labels ms
                 putStr "memory: "
-                printPopulatedMemory ms
+                print $ memory ms
 
 printPopulatedMemory :: MachineState -> IO()
 printPopulatedMemory ms = do let mem = memory ms
@@ -181,7 +187,7 @@ tSTR = execS (Ternary STR (R 1) (R 2) (IMM 3)) simpMachine ~?=
 
 tCONST :: Test
 tCONST = execS (Binary CONST (R 1) (IMM 10)) simpMachine ~?=
-         simpMachine { pc = 1, memory = (memory simpMachine) // [(1, DataVal 10)], nzp = (False, False, True) }
+         simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 10)], nzp = (False, False, True) }
 
 tLEA :: Test
 tLEA = execS (Binary LEA (R 1) (LABEL "lab")) simpMachine ~?=
