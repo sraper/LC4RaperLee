@@ -2,6 +2,9 @@
 .CODE
 WHAT .CONST x84
 
+	BRnzp x76
+	BRzp #-4
+
 	;; simple
 
 BEGIN
@@ -12,5 +15,7 @@ BEGIN
 	SUB R1, R2, R1
 	;; hey
 	NOP
+
+	.FALIGN
 
 END

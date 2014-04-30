@@ -300,6 +300,9 @@ t9 = do p <- parseFromFile lc4P "sample.asm"
         _ <- runTestTT bool
         return ()
 
+t10 :: Test
+t10 = parse lc4P (sJMP ++ sDir) ~?= Right( [Directive DATA,Directive CODE,Directive (ICONST "WHAT" 132),Memory (InsnVal (Unary BRnzp (IMM 118))),Memory (InsnVal (Unary BRzp (IMM (-4)))),Comment,Label "BEGIN",Memory (InsnVal (Binary CONST (R 1) (IMM 1))),Memory (InsnVal (Ternary ADDI (R 1) (R 1) (IMM 2))),Memory (InsnVal (Ternary ADDI (R 2) (R 1) (IMM 171))),Memory (InsnVal (Ternary SUB (R 1) (R 2) (R 1))),Comment,Memory (InsnVal (Single NOP)),Directive FALIGN,Label "END"] )
+
 main :: IO () 
 main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6, t7, t8 ])
           t9
