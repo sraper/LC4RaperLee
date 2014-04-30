@@ -46,7 +46,7 @@ execProg ms = let insn = (memory ms) ! (fromIntegral (pc ms)) in
                                Right ms' -> trace ("insn = " ++ (show i)) execProg ms'
 
 main :: IO ()
-main = do s <- parseFromFile lc4P "BRtest.asm"
+main = do s <- parseFromFile lc4P "fibonacci.asm"
           case s of
             (Left _) -> print "f up"
             (Right x) -> runLC4 x

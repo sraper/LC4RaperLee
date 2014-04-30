@@ -92,9 +92,9 @@ execute ms (Unary JSR t)
 execute ms (Unary JMP t)
                      = case t of
                          LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
-                                        return [ SetPC $ (pc ms) + 1 + add ]
+                                        return [ SetPC add ]
                          IMM i   -> let add = intToWord16 i in
-                                        return [ SetPC $ (pc ms) + 1 + add ]
+                                        return [ SetPC $ (pc ms) + add ]
                          _       -> throwError $ SomeError "JMP"
 execute ms (Unary JMPR (R rs)) 
                      = return [ SetPC $ (regs ms) ! rs ]
