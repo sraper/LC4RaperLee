@@ -24,7 +24,8 @@ dirIntP = do _ <- sP $ once $ char '#'
              return $ (read (n ++ s) :: Word16)
 
 dirHexP :: Parser Word16
-dirHexP = do _ <- sP $ (string "x" <|> string "X")
+dirHexP = do _ <- sP $ string "0" <|> return []
+             _ <- (string "x" <|> string "X")
              s <- many1 hexDigit
              return $ fromIntegral $ (fst . head . readHex) s
 
@@ -82,7 +83,8 @@ decimalP = do _ <- sP $ once $ char ','
 
 hexP :: Parser Tok
 hexP = do _ <- sP $ once $ char ','
-          _ <- sP $ (string "x" <|> string "X")
+          _ <- sP $ string "0" <|> return []
+          _ <- string "x" <|> string "X"
           i <- hex
           return $ IMM i
 
@@ -103,7 +105,6 @@ unaryP =  choice [ constP "BRnzp" BRnzp,
           constP "BRz" BRz,
           constP "BRp" BRp,
           constP "JSRR" JSRR,
-          constP "JSR" JSR,
           constP "JMPR" JMPR,
           constP "TRAP" TRAP,
           constP "JMP" JMP]
@@ -120,11 +121,11 @@ binaryP = choice [ constP "CMPIU" CMPIU,
           constP "LC" LC ]
 
 ternaryP :: Parser TernaryOp
-ternaryP = choice [ constP "MUL" MUL,
+ternaryP = choice [ constP "ADDI" ADDI, constP "MUL" MUL,
             constP "SUB" SUB, constP "DIV" DIV,
-            constP "ADD" ADD,
+            constP "ADD" ADD, constP "ANDI" ANDI,
             constP "OR" OR, constP "XOR" XOR,
-            constP "AND" AND,
+            constP "AND" AND, constP "JSR" JSR,
             constP "LDR" LDR, constP "STR" STR,
             constP "SLL" SLL, constP "SRA" SRA,
             constP "SRL" SRL, constP "MOD" MOD ]
@@ -228,8 +229,8 @@ otherP = many $ labelP
 lc4P :: Parser LC4
 lc4P = many lineP
 
-sADD :: String
-sADD = "ADDI R5 R4 xAB"
+sADDI :: String
+sADDI = "ADDI R5 R4 xAB"
 
 sCMP :: String
 sCMP = "CMP R1 R3   ;   boohoo"
@@ -253,14 +254,14 @@ sBRz :: String
 sBRz = "BRz ZERO        ; R3 = 0"
 
 sProg :: String
-sProg = "\n \t " ++ sLabel ++ "      \n" ++ sComment ++  "\n" ++ sJMP ++ "\n" ++ sADD
+sProg = "\n \t " ++ sLabel ++ "      \n" ++ sComment ++  "\n" ++ sJMP ++ "\n" ++ sADDI
 
 t0 :: Test
 t0 = parse lineP sLabel ~?= Right ( Label "BEGIN" )
 
 t1 :: Test
-t1 = parse lineP sADD ~?=
-     Right ( Memory $ InsnVal $ Ternary ADD (R 5) (R 4) (IMM (171)) )
+t1 = parse lineP sADDI ~?=
+     Right ( Memory $ InsnVal $ Ternary ADDI (R 5) (R 4) (IMM (171)) )
 
 t2 :: Test
 t2 = parse lineP sCONST  ~?=
@@ -276,7 +277,7 @@ t4 = parse lineP sJMP ~?=
 
 t5 :: Test
 t5 = parse lc4P sProg ~?=
-     Right ( [Label "BEGIN",Comment,Memory (InsnVal (Unary JMP (LABEL "TRAP_PUTC"))),Memory (InsnVal (Ternary ADD (R 5) (R 4) (IMM (171))))] )
+     Right ( [Label "BEGIN",Comment,Memory (InsnVal (Unary JMP (LABEL "TRAP_PUTC"))),Memory (InsnVal (Ternary ADDI (R 5) (R 4) (IMM (171))))] )
 
 t6 :: Test
 t6 = parse lineP sComment ~?=
@@ -300,8 +301,8 @@ t9 = do p <- parseFromFile lc4P "sample.asm"
         let bool = p ~?= Right [ Comment,
               Label "BEGIN",
               Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
-              Memory $ InsnVal $ Ternary ADD (R 1) (R 1) (IMM 2),
-              Memory $ InsnVal $ Ternary ADD (R 2) (R 1) (IMM 171),
+              Memory $ InsnVal $ Ternary ADDI (R 1) (R 1) (IMM 2),
+              Memory $ InsnVal $ Ternary ADDI (R 2) (R 1) (IMM 171),
               Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
               Comment,Memory (InsnVal (Single NOP)),Label "END"] 
         _ <- runTestTT bool
@@ -312,8 +313,8 @@ t10 = do p <- parseFromFile lc4P "BRtest.asm"
          let bool = p ~?= Right [ Comment,
               Label "BEGIN",
               Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
-              Memory $ InsnVal $ Ternary ADD (R 1) (R 1) (IMM 2),
-              Memory $ InsnVal $ Ternary ADD (R 2) (R 1) (IMM 171),
+              Memory $ InsnVal $ Ternary ADDI (R 1) (R 1) (IMM 2),
+              Memory $ InsnVal $ Ternary ADDI (R 2) (R 1) (IMM 171),
               Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
               Comment,Memory (InsnVal (Single NOP)),Label "END"] 
          _ <- runTestTT bool
