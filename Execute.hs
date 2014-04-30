@@ -83,6 +83,7 @@ execute ms (Unary JSRR (R rs))
                      = return [ SetReg 7 $ 1 + (pc ms),
                                  SetNZP $ calcNZPVal $ 1 + (pc ms),
                                  SetPC $ (regs ms) ! rs ]
+
 -- NO JSR RIGHT NOW
 execute ms (Unary JMP t)
                      = case t of
