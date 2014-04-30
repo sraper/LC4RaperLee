@@ -83,13 +83,17 @@ execute ms (Unary JSRR (R rs))
                      = return [ SetReg 7 $ 1 + (pc ms),
                                  SetNZP $ calcNZPVal $ 1 + (pc ms),
                                  SetPC $ (regs ms) ! rs ]
--- NO JSR RIGHT NOW
+execute ms (Unary JSR t)
+                     = case t of
+                         LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
+                                        return [ SetPC add ]
+                         _       -> throwError $ SomeError "JSR"
 execute ms (Unary JMP t)
                      = case t of
                          LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
-                                      return [ SetPC $ (pc ms) + 1 + add ]
+                                        return [ SetPC $ (pc ms) + 1 + add ]
                          IMM i   -> let add = intToWord16 i in
-                                      return [ SetPC $ (pc ms) + 1 + add ]
+                                        return [ SetPC $ (pc ms) + 1 + add ]
                          _       -> throwError $ SomeError "JMP"
 execute ms (Unary JMPR (R rs)) 
                      = return [ SetPC $ (regs ms) ! rs ]
@@ -98,9 +102,9 @@ execute ms (Single RET)
 execute ms (Unary TRAP (IMM i)) 
                      = let newpcv = i + 0x8000 in
                        return [ SetReg 7 $ (pc ms) + 1,
-                              SetPriv True,
-                              SetNZP $ calcNZPVal $ (pc ms) + 1,
-                              SetPC $ fromIntegral newpcv ]
+                                SetPriv True,
+                                SetNZP $ calcNZPVal $ (pc ms) + 1,
+                                SetPC $ fromIntegral newpcv ]
 -------------------------------------------------------------------------------
 ---------------------------------- BRANCHES -----------------------------------
 -------------------------------------------------------------------------------
