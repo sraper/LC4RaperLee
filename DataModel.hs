@@ -30,7 +30,7 @@ data MemVal = InsnVal Insn
 
 data Dir = DATA | CODE | FALIGN 
          | ADDR Word16 | FILL Word16
-         | BLKW Word16 | ICONST Word16 | UCONST Word16
+         | BLKW Word16 | ICONST String Word16 | UCONST String Word16
          deriving (Show, Eq)
 
 data Insn = Single Op

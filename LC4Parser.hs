@@ -8,20 +8,30 @@ import ParserCombinators
 import Test.HUnit hiding (Label)
 import Data.Word (Word16)
 import DataModel
+import Numeric
 
 -- | given a parser, try to apply it at most once
 once :: Parser a -> Parser [a]
-once p = aux p <|> many0
-   where many0 = return []
-         aux pa = do x <- pa
+once p = aux p <|> return []
+   where aux pa = do x <- pa
                      return [x]
 
 -- | parser for word16
+dirIntP :: Parser Word16
+dirIntP = do _ <- sP $ once $ char '#'
+             n <- sP $ string "-" <|> return []
+             s <- many1 digit  
+             return $ (read (n ++ s) :: Word16)
+
+dirHexP :: Parser Word16
+dirHexP = do _ <- sP $ (string "x" <|> string "X")
+             s <- many1 hexDigit
+             return $ fromIntegral $ (fst . head . readHex) s
+
+-- | parser for immediate field of directives
 word16 :: Parser Word16
-word16 = do _ <- sP $ once $ char '#'
-            n <- sP $ string "-" <|> return []
-            s <- many1 digit  
-            return $ (read (n ++ s) :: Word16)
+word16 = dirIntP <|> dirHexP
+
 
 constP :: String -> a -> Parser a
 constP s x = do s' <- string s
@@ -43,6 +53,12 @@ sP p = do _ <- many $ (char ' ' <|> char '\t')
 notNewLineP :: Parser Char
 notNewLineP = satisfy ('\n' /=)
 
+listPredicates :: [Char -> Bool]
+listPredicates = [('\n' /=), (' ' /=), ('\t' /=), ('\v' /=), ('\r' /=), ('\f' /=)]
+
+notNewLineOrSpaceP :: Parser Char
+notNewLineOrSpaceP = satisfyAll listPredicates
+
 -- | parser that parses comment
 commentP :: Parser [a]
 commentP = do _ <- sP $ char ';'
@@ -56,48 +72,68 @@ regP = do _ <- sP $ once $ char ','
           return $ (R i) 
 
 immP :: Parser Tok
-immP = do _ <- sP $ once $ char ','
-          i <- sP int
+immP = decimalP <|> hexP
+
+decimalP :: Parser Tok
+decimalP = do _ <- sP $ once $ char ','
+              _ <- sP $ once $ char '#'
+              i <- sP int
+              return $ IMM i
+
+hexP :: Parser Tok
+hexP = do _ <- sP $ once $ char ','
+          _ <- sP $ (string "x" <|> string "X")
+          i <- hex
           return $ IMM i
 
 labelTokP :: Parser Tok
 labelTokP = do _ <- sP $ once $ char ','
-               s <- sP $ many notNewLineP
+               s <- sP $ many1 notNewLineP
                return $ LABEL s
 
 tokenP :: Parser Tok
-tokenP = regP <|> immP <|> labelTokP
+tokenP = choice [ regP, immP, labelTokP ]
 
 unaryP :: Parser UnaryOp
-unaryP =  constP "BRn" BRn <|> constP "BRnz" BRnz
-         <|> constP "BRnp" BRnp <|> constP "BRz" BRz 
-         <|> constP "BRzp" BRzp <|> constP "BRp" BRp 
-         <|> constP "BRnzp" BRnzp  
-         <|> constP "JSRR" JSRR <|> constP "JMPR" JMPR
-         <|> constP "TRAP" TRAP <|> constP "JMP" JMP
+unaryP =  choice [ constP "BRnzp" BRnzp,
+          constP "BRnz" BRnz,
+          constP "BRnp" BRnp,
+          constP "BRzp" BRzp,
+          constP "BRn" BRn,
+          constP "BRz" BRz,
+          constP "BRp" BRp,
+          constP "JSRR" JSRR,
+          constP "JMPR" JMPR,
+          constP "TRAP" TRAP,
+          constP "JMP" JMP]
 
 binaryP :: Parser BinaryOp
-binaryP = constP "CMP" CMP <|> constP "CMPU" CMPU
-          <|> constP "CMPI" CMPI <|> constP "CMPIU" CMPIU
-          <|> constP "NOT" NOT 
-          <|> constP "CONST" CONST <|> constP "HICONST" HICONST
-          <|> constP "LEA" LEA <|> constP "LC" LC
+binaryP = choice [ constP "CMPIU" CMPIU,
+          constP "CMPI" CMPI,
+          constP "CMPU" CMPU,
+          constP "CMP" CMP,
+          constP "NOT" NOT,
+          constP "CONST" CONST,
+          constP "HICONST" HICONST, 
+          constP "LEA" LEA, 
+          constP "LC" LC ]
 
 ternaryP :: Parser TernaryOp
-ternaryP = constP "ADD" ADD <|> constP "MUL" MUL
-          <|> constP "SUB" SUB <|> constP "DIV" DIV
-          <|> constP "ADDI" ADDI <|> constP "AND" AND
-          <|> constP "OR" OR <|> constP "XOR" XOR
-          <|> constP "ANDI" ANDI <|> constP "JSR" JSR
-          <|> constP "LDR" LDR <|> constP "STR" STR
-          <|> constP "SLL" SLL <|> constP "SRA" SRA
-          <|> constP "SRL" SRL <|> constP "MOD" MOD
+ternaryP = choice [ constP "ADDI" ADDI, constP "MUL" MUL,
+            constP "SUB" SUB, constP "DIV" DIV,
+            constP "ADD" ADD, constP "ANDI" ANDI,
+            constP "OR" OR, constP "XOR" XOR,
+            constP "AND" AND, constP "JSR" JSR,
+            constP "LDR" LDR, constP "STR" STR,
+            constP "SLL" SLL, constP "SRA" SRA,
+            constP "SRL" SRL, constP "MOD" MOD ]
 
 opP :: Parser Line
-opP = (wsP $ constP "NOP" (Memory $ InsnVal $ Single NOP) )
-      <|> ( wsP $ constP "RTI" (Memory $ InsnVal $ Single RTI))
-      <|> ( wsP $ constP "RET" (Memory $ InsnVal $ Single RET))
-      <|> ( wsP $ constP "EOF" (Memory $ InsnVal $ Single EOF))
+opP = choice 
+      [ wsP $ constP "NOP" (Memory $ InsnVal $ Single NOP),
+       wsP $ constP "RTI" (Memory $ InsnVal $ Single RTI),
+       wsP $ constP "RET" (Memory $ InsnVal $ Single RET),
+       wsP $ constP "EOF" (Memory $ InsnVal $ Single EOF) ]
 
 unaryStP :: Parser Line
 unaryStP = do op <- wsP $ unaryP
@@ -154,42 +190,45 @@ blkwP = do _ <- wsP $ string ".BLKW"
            return ( Directive $ BLKW i )
 
 iconstP :: Parser Line
-iconstP = do _ <- wsP $ string ".CONST"
+iconstP = do l <- wsP $ many1 $ notNewLineOrSpaceP
+             _ <- sP $ string ".CONST"
              i <- word16
              _ <- once $ commentP
-             return ( Directive $ ICONST i )
+             return ( Directive $ ICONST l i )
 
 uconstP :: Parser Line
-uconstP = do _ <- wsP $ string ".UCONST"
+uconstP = do l <- wsP $ many1 $ notNewLineOrSpaceP
+             _ <- sP $ string ".UCONST"
              i <- word16
              _ <- once $ commentP
-             return ( Directive $ UCONST i )
+             return ( Directive $ UCONST l i )
 
 dirP :: Parser Line
-dirP = dataP <|> codeP <|> falignP 
-       <|> addrP <|> fillP <|> blkwP <|> iconstP <|> uconstP
+dirP = choice [ dataP, codeP, falignP, addrP, 
+         fillP, blkwP, iconstP, uconstP ]
 
 memValP :: Parser Line
-memValP = opP <|> unaryStP 
-          <|> binaryStP 
-          <|> ternaryStP
+memValP = choice [opP, unaryStP, binaryStP, ternaryStP]
 
 commentLineP :: Parser Line
 commentLineP = do _ <- wsP $ commentP
                   return Comment
 
 labelP :: Parser Line
-labelP = do s <- wsP $ many notNewLineP
+labelP = do s <- wsP $ many1 $ notNewLineOrSpaceP
             return $ Label s
 
 lineP :: Parser Line
-lineP = memValP <|> dirP <|> commentLineP
+lineP = choice [ memValP, dirP, commentLineP, labelP ]
+
+otherP :: Parser LC4
+otherP = many $ labelP
 
 lc4P :: Parser LC4
 lc4P = many lineP
 
-sADD :: String
-sADD = "ADD R5 R4 R3"
+sADDI :: String
+sADDI = "ADDI R5 R4 xAB"
 
 sCMP :: String
 sCMP = "CMP R1 R3   ;   boohoo"
@@ -204,20 +243,20 @@ sComment :: String
 sComment = ";    CIS 552"
 
 sDir :: String
-sDir = ".ADDR #5  ; what"
+sDir = ".ADDR #      5  ; what"
 
 sLabel :: String
 sLabel = "BEGIN"
 
 sProg :: String
-sProg = sComment ++ "\n " ++ sCMP ++ "\n" ++ sJMP
+sProg = "\n \t " ++ sLabel ++ "      \n" ++ sComment ++  "\n" ++ sJMP ++ "\n" ++ sADDI
 
 t0 :: Test
 t0 = parse lineP sLabel ~?= Right ( Label "BEGIN" )
 
 t1 :: Test
-t1 = parse lineP sADD ~?=
-     Right ( Memory $ InsnVal $ Ternary ADD (R 5) (R 4) (R 3) )
+t1 = parse lineP sADDI ~?=
+     Right ( Memory $ InsnVal $ Ternary ADDI (R 5) (R 4) (IMM (171)) )
 
 t2 :: Test
 t2 = parse lineP sCONST  ~?=
@@ -233,8 +272,7 @@ t4 = parse lineP sJMP ~?=
 
 t5 :: Test
 t5 = parse lc4P sProg ~?=
-     Right ( [ Comment, Memory $ InsnVal $ Binary CMP (R 1) (R 3) , 
-               Memory $ InsnVal $ Unary JMP (LABEL "TRAP_PUTC") ] )
+     Right ( [Label "BEGIN",Comment,Memory (InsnVal (Unary JMP (LABEL "TRAP_PUTC"))),Memory (InsnVal (Ternary ADDI (R 5) (R 4) (IMM (171))))] )
 
 t6 :: Test
 t6 = parse lineP sComment ~?=
@@ -255,12 +293,10 @@ t9 = do p <- parseFromFile lc4P "sample.asm"
         let bool = p ~?= Right [ Comment,
               Label "BEGIN",
               Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
-              Memory $ InsnVal $ Ternary ADD (R 1) (R 1) (IMM 2),
-              Memory $ InsnVal $ Ternary ADD (R 2) (R 1) (IMM 3),
+              Memory $ InsnVal $ Ternary ADDI (R 1) (R 1) (IMM 2),
+              Memory $ InsnVal $ Ternary ADDI (R 2) (R 1) (IMM 171),
               Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
-              Comment,
-              Label "END",
-              Memory $ InsnVal $ Single NOP ] 
+              Comment,Memory (InsnVal (Single NOP)),Label "END"] 
         _ <- runTestTT bool
         return ()
 
