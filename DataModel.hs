@@ -43,7 +43,7 @@ data Op = NOP | RTI | RET | EOF
           deriving (Show, Eq)
 
 data UnaryOp = BRn | BRnz | BRnp | BRz | BRzp | BRp | BRnzp
-             | JSRR | JMPR | TRAP | JMP
+             | JSRR | JSR | JMPR | TRAP | JMP
                deriving (Show, Eq)
 
 data BinaryOp =  CMP | CMPU | CMPI | CMPIU | NOT
@@ -51,8 +51,8 @@ data BinaryOp =  CMP | CMPU | CMPI | CMPIU | NOT
                | LEA | LC
                deriving (Show, Eq)
 
-data TernaryOp = ADD | MUL | SUB | DIV | ADDI
-               | AND | OR | XOR | JSR | ANDI
+data TernaryOp = ADD | MUL | SUB | DIV
+               | AND | OR | XOR
                | LDR | STR               
                | SLL | SRA | SRL | MOD
                deriving (Show, Eq)

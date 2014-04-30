@@ -46,7 +46,7 @@ simpMachine = MachineState {
                  nzp = (False, False, False),
                  regs = Data.Vector.fromList [0..7],
                  priv = True,
-                 memory = Data.Vector.replicate 10 (DataVal 0),
+                 memory = Data.Vector.replicate 65535 (DataVal 0),
                  labels = Map.fromList [("lab", 10)]
                   }
 
@@ -54,7 +54,7 @@ emptyMachine :: MachineState
 emptyMachine = MachineState {
                  pc = 0,
                  nzp = (False, False, False),
-                 regs = Data.Vector.replicate 7 0,
+                 regs = Data.Vector.replicate 8 0,
                  priv = False,
                  memory = Data.Vector.replicate 65535 (DataVal 0),
                  labels = Map.empty
