@@ -1,21 +1,14 @@
-.DATA
-.CODE
-WHAT .CONST x84
 
-	BRnzp x76
-	BRzp #-4
+	CONST R2, #0    ; Initialize C to 0
+	CONST R1, #4
+	CONST R0, #6
 
-	;; simple
+LOOP
 
-BEGIN
+	CMPI R1, #0	; Compare B to 0
+	BRnz END	; if (B <= 0) Branch to the end
 
-	CONST R1 , 1	; Hello
-	ADD R1, R1, #2; Hello
-	ADD R2, R1, 0xAB		;hello
-	SUB R1, R2, R1
-	;; hey
-	NOP
-
-	.FALIGN
+	ADD R2, R2, R0	; C = C + A
+	ADD R1, R1, #-1	; B =  B - 1
 
 END
