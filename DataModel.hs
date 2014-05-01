@@ -15,7 +15,6 @@ word16ToInt16 = fromIntegral
 intToWord16 :: Int -> Word16
 intToWord16 = fromIntegral
 
-
 type LC4 = [Line]
 
 data Line = Memory MemVal 

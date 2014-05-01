@@ -27,7 +27,6 @@ parseFromFile parser filename = do
   handle <- openFile filename ReadMode 
   str <- hGetContents handle
   return $ parse parser str
- 
 
 -- | Parsers for specific sorts of characters 
 alpha, digit, upper, lower, space, alphaNum, hexDigit :: Parser Char
