@@ -5,7 +5,6 @@
 module LC4 where
 
 import Prelude
-
 import Control.Monad.State
 import Control.Monad.Error
 import Data.Vector (Vector, (!), (//), replicate, filter)
@@ -96,11 +95,6 @@ fetch = do ms <- get
              InsnVal i -> return i
              DataVal _ -> throwError $ OtherError "wrong fetch, got a data value"
 
--- -- | Helper function that returns true if trying to execute data value as insn
--- isInvalidPC :: MachineState -> Bool
--- isInvalidPC ms = let pc = pc ms in
---                  if (pc >= 0x2000 && pc < 0x8000) || (pc >= 0xA000)
-
 -- | Helper function that handles arithmetic or logical operations
 arithOrLogic :: (Word16, Word16, Int) -> (Word16 -> Word16 -> Word16) -> Delta
 arithOrLogic (rsv, rtv, rd) f = let res = f rsv rtv in
@@ -113,9 +107,9 @@ getRegVal ms i = (regs ms) ! i
 
 -- | Helper function that determines NZP bits based on input number
 calcNZP :: (Num a, Eq a, Ord a) => a -> (Bool, Bool, Bool)
-calcNZP x | x < 0  = (True, False, False) -- N
-calcNZP x | x == 0 = (False, True, False) -- Z
-calcNZP _          = (False, False, True) -- P
+calcNZP x | x < 0     = (True, False, False) -- N
+          | x == 0    = (False, True, False) -- Z
+          | otherwise = (False, False, True) -- P
 
 
 -- | Helper function that returns True if any of the NZP bits match the input
@@ -127,161 +121,161 @@ matchNZP (n, z, p) (n', z', p') = ( n == True && n' == True ) ||
 -- | Helper function to handle branching
 branchLogic :: (MonadState MachineState m, MonadError LC4Error m) => 
                Tok -> Bool -> m Delta
-branchLogic tok p = 
-  do ms <- get
-     case p of
-       True -> case tok of
-         LABEL l -> let v = Map.lookup l (labels ms) in
-                    case v of
-                      (Just i) -> return [SetPC i]
-                      Nothing   -> throwError $ NoSuchLabel l
-         IMM i   -> return [SetPC ((pc ms ) + (fromIntegral i))]
-         _       -> throwError $ OtherError "Cannot Branch to a register"
-       False -> return [IncPC]
+branchLogic tok p = do 
+  ms <- get
+  case p of
+    True -> case tok of
+      LABEL l -> let v = Map.lookup l (labels ms) in
+        case v of
+          (Just i)  -> return [SetPC i]
+          Nothing   -> throwError $ NoSuchLabel l
+      IMM i   -> return [SetPC ((pc ms ) + (fromIntegral i))]
+      _       -> throwError $ OtherError "Cannot Branch to a register"
+    False   -> return [IncPC]
 
 -- | Decoder
 decodeInsn :: (MonadState MachineState m, MonadError LC4Error m) => Insn -> m Delta
-decodeInsn insn = 
-  do ms <- get
-     case insn of
-       (Single NOP)         -> return [IncPC]
-       (Single RTI)         -> let r7_val = (regs ms) ! 7 in
-                               return [ SetPriv False, SetPC r7_val ]
-       (Unary JSRR (R rs))  -> return 
-                               [ SetReg 7 $ 1 + (pc ms),
-                                 SetNZP $ calcNZP $ 1 + (pc ms),
-                                 SetPC $ (regs ms) ! rs ]
-       (Unary JSR (LABEL l)) ->
-              let add = fromIntegral $ Map.findWithDefault 0 l $ labels ms in
-              return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL add 4) ]
-       (Unary JSR (IMM i))   ->
-              return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL (fromIntegral i) 4) ]
-       (Unary JMP t)        -> 
-         case t of
-              LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
-                         return [ SetPC add ]
-              IMM i   -> let add = intToWord16 i in
-                         return [ SetPC $ (pc ms) + add ]
-              _       -> throwError $ OtherError "JMP: cannot take regVal"
-       (Unary JMPR (R rs))  -> return [ SetPC $ (regs ms) ! rs ]
-       (Single RET)         -> decodeInsn (Unary JMPR (R 7))
-       (Unary TRAP (IMM i)) -> let newpcv = i + 0x8000 in
-                               return [ SetReg 7 $ (pc ms) + 1,
-                                        SetPriv True,
-                                        SetNZP $ calcNZP $ (pc ms) + 1,
-                                        SetPC $ fromIntegral newpcv ]
+decodeInsn insn = do
+  ms <- get
+  case insn of
+    (Single NOP)         -> return [IncPC]
+    (Single RTI)         -> let r7_val = (regs ms) ! 7 in
+                            return [ SetPriv False, SetPC r7_val ]
+    (Unary JSRR (R rs))  -> return 
+                            [ SetReg 7 $ 1 + (pc ms),
+                              SetNZP $ calcNZP $ 1 + (pc ms),
+                              SetPC $ (regs ms) ! rs ]
+    (Unary JSR (LABEL l)) ->
+      let add = fromIntegral $ Map.findWithDefault 0 l $ labels ms in
+      return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL add 4) ]
+    (Unary JSR (IMM i))   ->
+      return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL (fromIntegral i) 4) ]
+    (Unary JMP t)        -> 
+      case t of
+        LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
+                   return [ SetPC add ]
+        IMM i   -> let add = intToWord16 i in
+                   return [ SetPC $ (pc ms) + add ]
+        _       -> throwError $ OtherError "JMP: cannot take regVal"
+    (Unary JMPR (R rs))  -> return [ SetPC $ (regs ms) ! rs ]
+    (Single RET)         -> decodeInsn (Unary JMPR (R 7))
+    (Unary TRAP (IMM i)) -> let newpcv = i + 0x8000 in
+                            return [ SetReg 7 $ (pc ms) + 1,
+                                     SetPriv True,
+                                     SetNZP $ calcNZP $ (pc ms) + 1,
+                                     SetPC $ fromIntegral newpcv ]
 
-       -------------------------------------------------------------------------------
-       ---------------------------------- BRANCHES -----------------------------------
-       -------------------------------------------------------------------------------
-       (Unary BRn l)      -> branchLogic l (matchNZP (nzp ms) (True, False, False))
-       (Unary BRnz l)     -> branchLogic l (matchNZP (nzp ms) (True, True, False))
-       (Unary BRz l)      -> branchLogic l (matchNZP (nzp ms) (False, True, False))
-       (Unary BRzp l)     -> branchLogic l (matchNZP (nzp ms) (False, True, True))
-       (Unary BRnp l)     -> branchLogic l (matchNZP (nzp ms) (True, False, True))
-       (Unary BRp l)      -> branchLogic l (matchNZP (nzp ms) (False, False, True))
-       (Unary BRnzp l)    -> branchLogic l (matchNZP (nzp ms) (True, True, True))
-       -------------------------------------------------------------------------------
-       --------------------------------- COMPARES ------------------------------------
-       -------------------------------------------------------------------------------
-       (Binary CMP (R rs) (R rt)) -> 
-               let rsv = word16ToInt16 $ (regs ms) ! rs
-                   rtv = word16ToInt16 $ (regs ms) ! rt in
-               return [ SetNZP $ calcNZP $ rsv - rtv, IncPC ]
-       (Binary CMPU (R rs) (R rt)) -> 
-               let rsv = word16ToInt $ (regs ms) ! rs
-                   rtv = word16ToInt $ (regs ms) ! rt in
-               return [ SetNZP $ calcNZP $ rsv - rtv, IncPC ]
-       (Binary CMPI (R rs) (IMM i)) -> 
-               let rsv = word16ToInt16 $ (regs ms) ! rs
-                   iv = (fromIntegral i) :: Int16 in
-               return [ SetNZP $ calcNZP $ rsv - iv, IncPC ]
-       (Binary CMPIU (R rs) (IMM i)) ->
-               let rsv = word16ToInt $ (regs ms) ! rs
-                   unsignedi = (fromIntegral i) :: Word16
-                   expandi = (fromIntegral unsignedi) :: Int in
-               return [ SetNZP $ calcNZP $ rsv - expandi, IncPC ]
-       -------------------------------------------------------------------------------
-       ------------------------------ ARITHMETIC OPS ---------------------------------
-       -------------------------------------------------------------------------------
-       (Ternary ADD (R rd) (R rs) (R rt)) ->
-               return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (+)
-       (Ternary MUL (R rd) (R rs) (R rt)) ->
-               return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (*)
-       (Ternary SUB (R rd) (R rs) (R rt)) ->
-               return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (-)
-       (Ternary DIV (R rd) (R rs) (R rt)) ->
-               let rsv = (regs ms) ! rs
-                   rtv = (regs ms) ! rt in
-               if(rtv == 0) then throwError $ DivisionByZero
-               else return [ SetReg rd (rsv `div` rtv),
-                    SetNZP $ calcNZP $ word16ToInt16 $ rsv `div` rtv, IncPC ]
-       (Ternary ADD (R rd) (R rs) (IMM i)) ->
-               return $ arithOrLogic (getRegVal ms rs, intToWord16 i, rd) (+)
-       (Ternary MOD (R rd) (R rs) (R rt)) ->
-               return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (mod)
-       -------------------------------------------------------------------------------
-       ------------------------------- LOGICAL OPS -----------------------------------
-       -------------------------------------------------------------------------------
-       (Ternary AND (R rd) (R rs) (R rt)) -> 
-               return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (.&.)
-       (Binary NOT (R rd) (R rs)) ->
-               let rsv = (regs ms) ! rs in
-               return [ SetReg rd $ complement rsv,
-                        SetNZP $ calcNZP $ word16ToInt16 $ complement rsv, IncPC ]
-       (Ternary OR (R rd) (R rs) (R rt)) ->
-               return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (.|.)
-       (Ternary XOR (R rd) (R rs) (R rt)) ->
-                return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (xor)
-       (Ternary AND (R rd) (R rs) (IMM i)) ->
-               return $ arithOrLogic (getRegVal ms rs, intToWord16 i, rd) (.&.)
-       -------------------------------------------------------------------------------
-       ---------------------------------- SHIFTS -------------------------------------
-       -------------------------------------------------------------------------------
-       (Ternary SLL (R rd) (R rs) (IMM i)) -> 
-               let rsv = (regs ms) ! rs in
-               return [ SetReg rd $ shiftL rsv i,
-                        SetNZP $ calcNZP $ shiftL rsv i, IncPC ]
-       (Ternary SRL (R rd) (R rs) (IMM i)) ->
-               let rsv = (regs ms) ! rs in
-               return [ SetReg rd $ shiftR rsv i,
-                        SetNZP $ calcNZP $ shiftR rsv i, IncPC ]
-       (Ternary SRA (R rd) (R rs) (IMM i)) -> 
-               let rsv = fromIntegral ((regs ms) ! rs) :: Int16
-                   shifted = fromIntegral $ shiftR rsv i :: Word16 in
-               return [ SetReg rd shifted,
-                        SetNZP $ calcNZP $ shiftR rsv i, IncPC ]
-       -------------------------------------------------------------------------------
-       ------------------------------ MEMORY ACCESS ----------------------------------
-       -------------------------------------------------------------------------------
-       (Ternary LDR (R rd) (R rs) (IMM i)) ->
-               let rsv = (regs ms) ! rs
-                   addr = (word16ToInt rsv) + i
-                   val = (memory ms) ! addr in
-               case val of
-                    DataVal d -> return [ SetReg rd d,
-                                          SetNZP $ calcNZP d, IncPC]
-                    _ -> throwError $ OtherError "Load Error" -- NEED ERROR
-       (Ternary STR (R rd) (R rs) (IMM i)) ->
-               let rsv = (regs ms) ! rs
-                   addr = (word16ToInt rsv) + i
-                   val = (regs ms) ! rd in
-               return [ SetMem addr $ DataVal val, IncPC ]
-       (Binary CONST (R rd) (IMM i)) ->
-               return [ SetReg rd $ intToWord16 i,
-                        SetNZP $ calcNZP i, IncPC ]
-       (Binary LEA (R r1) (LABEL l)) ->
-               let addr = Map.findWithDefault 0 l $ labels ms in
-               return [ SetReg r1 addr, 
-                        SetNZP $ calcNZP addr, IncPC ]
-       (Binary LC (R r1) (LABEL l)) ->
-               let addr = Map.findWithDefault 0 l $ labels ms
-                   val = (memory ms) ! word16ToInt addr in
-               case val of
-                 DataVal d -> return [ SetReg r1 d, 
-                                       SetNZP $ calcNZP d, IncPC]
-                 _         -> throwError $ OtherError "Cannot load constant" -- NEED ERROR
-       _  -> throwError $ NoSuchInstruction
+    -------------------------------------------------------------------------------
+    ---------------------------------- BRANCHES -----------------------------------
+    -------------------------------------------------------------------------------
+    (Unary BRn l)      -> branchLogic l (matchNZP (nzp ms) (True, False, False))
+    (Unary BRnz l)     -> branchLogic l (matchNZP (nzp ms) (True, True, False))
+    (Unary BRz l)      -> branchLogic l (matchNZP (nzp ms) (False, True, False))
+    (Unary BRzp l)     -> branchLogic l (matchNZP (nzp ms) (False, True, True))
+    (Unary BRnp l)     -> branchLogic l (matchNZP (nzp ms) (True, False, True))
+    (Unary BRp l)      -> branchLogic l (matchNZP (nzp ms) (False, False, True))
+    (Unary BRnzp l)    -> branchLogic l (matchNZP (nzp ms) (True, True, True))
+    -------------------------------------------------------------------------------
+    --------------------------------- COMPARES ------------------------------------
+    -------------------------------------------------------------------------------
+    (Binary CMP (R rs) (R rt)) -> 
+      let rsv = word16ToInt16 $ (regs ms) ! rs
+          rtv = word16ToInt16 $ (regs ms) ! rt in
+          return [ SetNZP $ calcNZP $ rsv - rtv, IncPC ]
+    (Binary CMPU (R rs) (R rt)) -> 
+      let rsv = word16ToInt $ (regs ms) ! rs
+          rtv = word16ToInt $ (regs ms) ! rt in
+          return [ SetNZP $ calcNZP $ rsv - rtv, IncPC ]
+    (Binary CMPI (R rs) (IMM i)) -> 
+      let rsv = word16ToInt16 $ (regs ms) ! rs
+          iv = (fromIntegral i) :: Int16 in
+          return [ SetNZP $ calcNZP $ rsv - iv, IncPC ]
+    (Binary CMPIU (R rs) (IMM i)) ->
+      let rsv = word16ToInt $ (regs ms) ! rs
+          unsignedI = (fromIntegral i) :: Word16
+          expandI = (fromIntegral unsignedI) :: Int in
+          return [ SetNZP $ calcNZP $ rsv - expandI, IncPC ]
+    -------------------------------------------------------------------------------
+    ------------------------------ ARITHMETIC OPS ---------------------------------
+    -------------------------------------------------------------------------------
+    (Ternary ADD (R rd) (R rs) (R rt)) ->
+      return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (+)
+    (Ternary MUL (R rd) (R rs) (R rt)) ->
+      return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (*)
+    (Ternary SUB (R rd) (R rs) (R rt)) ->
+      return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (-)
+    (Ternary DIV (R rd) (R rs) (R rt)) ->
+      let rsv = (regs ms) ! rs
+          rtv = (regs ms) ! rt in
+          if (rtv == 0) then throwError $ DivisionByZero
+          else return [ SetReg rd (rsv `div` rtv),
+          SetNZP $ calcNZP $ word16ToInt16 $ rsv `div` rtv, IncPC ]
+    (Ternary ADD (R rd) (R rs) (IMM i)) ->
+      return $ arithOrLogic (getRegVal ms rs, intToWord16 i, rd) (+)
+    (Ternary MOD (R rd) (R rs) (R rt)) ->
+      return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (mod)
+    -------------------------------------------------------------------------------
+    ------------------------------- LOGICAL OPS -----------------------------------
+    -------------------------------------------------------------------------------
+    (Ternary AND (R rd) (R rs) (R rt)) -> 
+      return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (.&.)
+    (Binary NOT (R rd) (R rs)) ->
+      let rsv = (regs ms) ! rs in
+      return [ SetReg rd $ complement rsv,
+               SetNZP $ calcNZP $ word16ToInt16 $ complement rsv, IncPC ]
+    (Ternary OR (R rd) (R rs) (R rt)) ->
+      return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (.|.)
+    (Ternary XOR (R rd) (R rs) (R rt)) ->
+      return $ arithOrLogic (getRegVal ms rs, getRegVal ms rt, rd) (xor)
+    (Ternary AND (R rd) (R rs) (IMM i)) ->
+      return $ arithOrLogic (getRegVal ms rs, intToWord16 i, rd) (.&.)
+    -------------------------------------------------------------------------------
+    ---------------------------------- SHIFTS -------------------------------------
+    -------------------------------------------------------------------------------
+    (Ternary SLL (R rd) (R rs) (IMM i)) -> 
+      let rsv = (regs ms) ! rs in
+      return [ SetReg rd $ shiftL rsv i,
+               SetNZP $ calcNZP $ shiftL rsv i, IncPC ]
+    (Ternary SRL (R rd) (R rs) (IMM i)) ->
+      let rsv = (regs ms) ! rs in
+      return [ SetReg rd $ shiftR rsv i,
+               SetNZP $ calcNZP $ shiftR rsv i, IncPC ]
+    (Ternary SRA (R rd) (R rs) (IMM i)) -> 
+      let rsv = fromIntegral ((regs ms) ! rs) :: Int16
+          shifted = fromIntegral $ shiftR rsv i :: Word16 in
+          return [ SetReg rd shifted,
+                   SetNZP $ calcNZP $ shiftR rsv i, IncPC ]
+    -------------------------------------------------------------------------------
+    ------------------------------ MEMORY ACCESS ----------------------------------
+    -------------------------------------------------------------------------------
+    (Ternary LDR (R rd) (R rs) (IMM i)) ->
+      let rsv = (regs ms) ! rs
+          addr = (word16ToInt rsv) + i
+          val = (memory ms) ! addr in
+      case val of
+        DataVal d -> return [ SetReg rd d,
+                              SetNZP $ calcNZP d, IncPC]
+        _ -> throwError $ OtherError "Load Error" -- NEED ERROR
+    (Ternary STR (R rd) (R rs) (IMM i)) ->
+      let rsv = (regs ms) ! rs
+          addr = (word16ToInt rsv) + i
+          val = (regs ms) ! rd in
+          return [ SetMem addr $ DataVal val, IncPC ]
+    (Binary CONST (R rd) (IMM i)) ->
+      return [ SetReg rd $ intToWord16 i,
+               SetNZP $ calcNZP i, IncPC ]
+    (Binary LEA (R r1) (LABEL l)) ->
+      let addr = Map.findWithDefault 0 l $ labels ms in
+          return [ SetReg r1 addr, 
+                   SetNZP $ calcNZP addr, IncPC ]
+    (Binary LC (R r1) (LABEL l)) ->
+      let addr = Map.findWithDefault 0 l $ labels ms
+          val = (memory ms) ! word16ToInt addr in
+      case val of
+        DataVal d -> return [ SetReg r1 d, 
+                              SetNZP $ calcNZP d, IncPC]
+        _         -> throwError $ OtherError "Cannot load constant" -- NEED ERROR
+    _  -> throwError $ NoSuchInstruction
 
 -- | Updates MachineState using input list of changes
 updateMachineState :: Delta -> MachineState -> MachineState
@@ -316,20 +310,22 @@ populateMemory xs ms =
            
 -- | Helper function to check whether or not program should terminate        
 isTerminate :: (MonadState MachineState m) => m Bool
-isTerminate = do ms <- get
-                 let insn = (memory ms) ! (fromIntegral (pc ms))
-                 case insn of
-                   DataVal _ -> return True
-                   InsnVal _ -> return False
+isTerminate = do 
+  ms <- get
+  let insn = (memory ms) ! (fromIntegral (pc ms))
+  case insn of
+    DataVal _ -> return True
+    InsnVal _ -> return False
 
 -- | execution loop - fetch, decode, and update state
 execute :: (MonadState MachineState m, MonadError LC4Error m) => m ()
-execute = do halt <- isTerminate 
-             when ( not halt ) $ do
-               i <- fetch 
-               d <- trace ("insn = " ++ show i) $ decodeInsn i
-               modify (updateMachineState d)
-               execute
+execute = do 
+  halt <- isTerminate 
+  when ( not halt ) $ do
+  i <- fetch 
+  d <- trace ("insn = " ++ show i) $ decodeInsn i
+  modify (updateMachineState d)
+  execute
 
 -- | Runs LC4 using some initial state
 runLC4 :: MachineState -> IO()
@@ -341,9 +337,10 @@ runLC4 ms =
 
 -- | Simulate the execution of one instruction
 execOneInsn :: (MonadState MachineState m, MonadError LC4Error m) => Insn -> m ()
-execOneInsn insn = do d <- decodeInsn insn
-                      _ <- modify (updateMachineState d)
-                      return ()
+execOneInsn insn = do 
+  d <- decodeInsn insn
+  _ <- modify (updateMachineState d)
+  return ()
 
 -- | Runs the machine using one instruction; for debugging purposes
 execOnce :: Insn -> MachineState -> Either String MachineState
@@ -352,16 +349,6 @@ execOnce insn ms =
   case err of
     Left e  -> Left (show e) -- output error
     Right _ -> Right ms' -- otherwise print out final machine state
-
-main :: String -> IO ()
-main file = do 
-  s <- parseFromFile lc4P file
-  case s of
-    (Left _) -> print "Error while parsing through file"
-    (Right insns) -> let ms = populateMemory insns emptyMachine 
-                         ms'= ms {pc = 0x8200} in
-                     runLC4 ms'
-  return ()
 
 mainOptimized :: String -> IO ()
 mainOptimized file = do 
@@ -435,11 +422,12 @@ showOptimized file = do s <- parseFromFile lc4P file
                           (Right x) -> print $ optimize x
                         return ()
 
---Jasmine's questions:
---Note: Changed calcNZP function because it was convoluted
---Note: new arithOrLogic function for arithmetic and logical operations
---Note: changed printPopulatedMemory to showPopulatedMemory
-
---To Do:
---Add more types of errors
---JSR
+main :: String -> IO ()
+main file = do 
+  s <- parseFromFile lc4P file
+  case s of
+    (Left _) -> print "Error while parsing through file"
+    (Right insns) -> let ms = populateMemory insns emptyMachine 
+                         ms'= ms {pc = 0x8200} in
+                     runLC4 ms'
+  return ()
