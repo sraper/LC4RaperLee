@@ -72,23 +72,6 @@ instance Show MachineState where
         "\n--------------------------------------"
     where (n, z, p) = _nzp
 
-printMS :: MachineState -> IO ()
-printMS ms = do putStr "pc: "
-                print $ pc ms
-                putStr "priv: "
-                print $ priv ms
-                let (n, z, p) = nzp ms
-                putStr "nzp: "
-                if n then (print 1) else (print 0)
-                if z then (print 1) else (print 0)
-                if p then (print 1) else (print 0)
-                putStr "regs: "
-                print $ regs ms
-                putStr "labels: "
-                print $ labels ms
-                putStr "memory: "
-                print $ memory ms
-
 -- | Convert populated portion of memory into a string
 showPopulatedMemory :: Vector MemVal -> String
 showPopulatedMemory mem = show ( Data.Vector.filter (/= DataVal 0) mem )
@@ -167,11 +150,11 @@ decodeInsn insn =
                                [ SetReg 7 $ 1 + (pc ms),
                                  SetNZP $ calcNZP $ 1 + (pc ms),
                                  SetPC $ (regs ms) ! rs ]
-       (Unary JSR t)        -> ---------FIX cases not covered???
-         case t of
-              LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
-                         return [ SetPC add ]
-              _       -> throwError $ OtherError "JSR: not label"
+       (Unary JSR (LABEL l)) -> ---------FIX cases not covered???
+              let add = fromIntegral $ Map.findWithDefault 0 l $ labels ms in
+              return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL add 4) ]
+       (Unary JSR (IMM i))   ->
+              return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL (fromIntegral i) 4) ]
        (Unary JMP t)        -> 
          case t of
               LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
@@ -378,3 +361,88 @@ main file = do s <- parseFromFile lc4P file
                                       ms'= ms {pc = 0} in
                                       runLC4 ms'
                return ()
+
+mainOptimized :: String -> IO ()
+mainOptimized file = do s <- parseFromFile lc4P file
+                        case s of
+                          (Left _) -> print "Error while parsing through file"
+                          (Right insns) -> let ms = populateMemory (optimize insns) emptyMachine 
+                                               ms'= ms {pc = 0} in
+                                               runLC4 ms'
+                        return ()
+
+testPopulateMemory :: String -> IO ()
+testPopulateMemory file = do s <- parseFromFile lc4P file
+                             case s of
+                               (Left _) -> print "f up"
+                               (Right x) -> print $ populateMemory x emptyMachine
+                             return ()
+
+canOptimize :: Insn -> Bool
+canOptimize (Binary CONST _ _)  = True
+canOptimize (Binary NOT _ _)    = True
+canOptimize (Ternary ADD _ _ _) = True
+canOptimize (Ternary SUB _ _ _) = True
+canOptimize (Ternary MUL _ _ _) = True
+canOptimize (Ternary DIV _ _ _) = True
+canOptimize (Ternary MOD _ _ _) = True
+canOptimize (Ternary AND _ _ _) = True
+canOptimize (Ternary OR  _ _ _) = True
+canOptimize (Ternary XOR _ _ _) = True
+canOptimize (Ternary LDR _ _ _) = True
+canOptimize (Ternary SLL _ _ _) = True
+canOptimize (Ternary SRA _ _ _) = True
+canOptimize (Ternary SRL _ _ _) = True
+canOptimize _                   = False
+
+getRD :: Insn -> Int
+getRD (Ternary _ (R rd) _ _) = rd
+getRD (Binary  _ (R rd) _)   = rd
+getRD _                      = -1
+
+notDepends :: Insn -> Insn -> Bool
+notDepends (Ternary _ (R rd1) _ _) (Ternary _ _ (R rs2) (R rv2)) = 
+  not $ rd1 == rs2 || rd1 == rv2
+notDepends (Ternary _ (R rd1) _ _) (Binary  _ _ (R rs2)) =
+  not $ rd1 == rs2
+notDepends (Ternary _ (R rd1) _ _) (Ternary _ _ (R rs2) _) = 
+  not $ rd1 == rs2
+notDepends (Binary  _ (R rd1) _)   (Ternary _ _ (R rs2) (R rv2)) =
+  not $ rd1 == rs2 || rd1 == rv2
+notDepends (Binary  _ (R rd1) _)   (Ternary _ _ (R rs2) _) = 
+  not $ rd1 == rs2
+notDepends (Binary  _ (R rd1) _)   (Binary _ _  (R rs2)) =
+  not $ rd1 == rs2
+notDepends _ _ = True
+
+
+optimize :: LC4 -> LC4
+optimize ((Memory (InsnVal x)):(Memory (InsnVal y)):xs) =
+  if (canOptimize x) && (canOptimize y) && (getRD x == getRD y) && (notDepends x y)
+    then (Memory (InsnVal y)) : (optimize xs)
+    else (Memory (InsnVal x)) : (Memory (InsnVal y)) : (optimize xs)
+optimize (x:xs) = x : (optimize xs)
+optimize [] = []
+
+showOptimized :: String -> IO ()
+showOptimized file = do s <- parseFromFile lc4P file
+                        case s of
+                          (Left _) -> print "f up"
+                          (Right x) -> print $ optimize x
+                        return ()
+
+--Jasmine's questions:
+--Why does PC end at 18 for multiply.asm?
+--tSUB2 result is incorrect?
+--Tests run rather slowly
+--Note: NZP is 010 in the initial state
+--Note: Changed calcNZP function because it was convoluted
+--Note: new arithOrLogic function for arithmetic and logical operations
+--Note: changed printPopulatedMemory to showPopulatedMemory
+
+
+--To Do:
+--Add more types of errors
+--JSRR
+--Perhaps bring pretty printing back..
+--Separate data memory from insn memory, catch related errors
