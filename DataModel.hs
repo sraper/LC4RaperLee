@@ -20,7 +20,6 @@ type LC4 = [Line]
 data Line = Memory MemVal 
           | Directive Dir 
           | Label String
-          | Comment
           deriving (Show, Eq)
 
 data MemVal = InsnVal Insn 

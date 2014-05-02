@@ -15,7 +15,7 @@ import Data.Int (Int16)
 import Data.Bits
 
 import DataModel
-import LC4Parser hiding (main)
+import LC4Parser
 import ParserCombinators
 
 type MLC4 = ErrorT LC4Error (State MachineState)
@@ -301,7 +301,6 @@ populateMemory [] ms = ms
 populateMemory xs ms = 
     Prelude.foldl pop (ms { pc = 0 }) xs where
       pop acc i = case i of
-        Comment            -> acc
         Directive (FALIGN) -> case (pc acc) `mod` 16 of
                                 0 -> acc
                                 x -> acc { pc = (pc acc) + (16 - x) }
@@ -432,17 +431,10 @@ showOptimized file = do s <- parseFromFile lc4P file
                         return ()
 
 --Jasmine's questions:
---Why does PC end at 18 for multiply.asm?
---tSUB2 result is incorrect?
---Tests run rather slowly
---Note: NZP is 010 in the initial state
 --Note: Changed calcNZP function because it was convoluted
 --Note: new arithOrLogic function for arithmetic and logical operations
 --Note: changed printPopulatedMemory to showPopulatedMemory
 
-
 --To Do:
 --Add more types of errors
---JSRR
---Perhaps bring pretty printing back..
---Separate data memory from insn memory, catch related errors
+--JSR
