@@ -363,13 +363,14 @@ main file = do s <- parseFromFile lc4P file
                return ()
 
 mainOptimized :: String -> IO ()
-mainOptimized file = do s <- parseFromFile lc4P file
-                        case s of
-                          (Left _) -> print "Error while parsing through file"
-                          (Right insns) -> let ms = populateMemory (optimize insns) emptyMachine 
-                                               ms'= ms {pc = 0} in
-                                               runLC4 ms'
-                        return ()
+mainOptimized file = do 
+  s <- parseFromFile lc4P file
+  case s of
+    (Left _) -> print "Error while parsing through file"
+    (Right insns) -> let ms = populateMemory (optimize insns) emptyMachine 
+                         ms'= ms {pc = 0} in
+                     runLC4 ms'
+  return ()
 
 testPopulateMemory :: String -> IO ()
 testPopulateMemory file = do s <- parseFromFile lc4P file
