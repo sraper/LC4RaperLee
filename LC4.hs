@@ -13,6 +13,7 @@ import Data.Map as Map hiding ((!), update)
 import Data.Word (Word16)
 import Data.Int (Int16)
 import Data.Bits
+import Debug.Trace
 
 import DataModel
 import LC4Parser
@@ -79,10 +80,10 @@ showPopulatedMemory mem = show ( Data.Vector.filter (/= DataVal 0) mem )
 -- | Initial MachineState
 emptyMachine :: MachineState
 emptyMachine = MachineState {
-                 pc = 0,
+                 pc = 0x8200,
                  nzp = (False, True, False),
                  regs = Data.Vector.replicate 8 0,
-                 priv = False,
+                 priv = True,
                  memory = Data.Vector.replicate 65535 (DataVal 0),
                  labels = Map.empty
                }
@@ -150,7 +151,7 @@ decodeInsn insn =
                                [ SetReg 7 $ 1 + (pc ms),
                                  SetNZP $ calcNZP $ 1 + (pc ms),
                                  SetPC $ (regs ms) ! rs ]
-       (Unary JSR (LABEL l)) -> ---------FIX cases not covered???
+       (Unary JSR (LABEL l)) ->
               let add = fromIntegral $ Map.findWithDefault 0 l $ labels ms in
               return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL add 4) ]
        (Unary JSR (IMM i))   ->
@@ -326,7 +327,7 @@ execute :: (MonadState MachineState m, MonadError LC4Error m) => m ()
 execute = do halt <- isTerminate 
              when ( not halt ) $ do
                i <- fetch 
-               d <- decodeInsn i
+               d <- trace ("insn = " ++ show i) $ decodeInsn i
                modify (updateMachineState d)
                execute
 
@@ -357,7 +358,7 @@ main file = do s <- parseFromFile lc4P file
                case s of
                  (Left _) -> print "Error while parsing through file"
                  (Right insns) -> let ms = populateMemory insns emptyMachine 
-                                      ms'= ms {pc = 0} in
+                                      ms'= ms {pc = 0x8200} in
                                       runLC4 ms'
                return ()
 
