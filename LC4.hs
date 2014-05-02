@@ -112,6 +112,11 @@ fetch = do ms <- get
              InsnVal i -> return i
              DataVal _ -> throwError $ OtherError "wrong fetch, got a data value"
 
+-- -- | Helper function that returns true if trying to execute data value as insn
+-- isInvalidPC :: MachineState -> Bool
+-- isInvalidPC ms = let pc = pc ms in
+--                  if (pc >= 0x2000 && pc < 0x8000) || (pc >= 0xA000)
+
 -- | Helper function that handles arithmetic or logical operations
 arithOrLogic :: (Word16, Word16, Int) -> (Word16 -> Word16 -> Word16) -> Delta
 arithOrLogic (rsv, rtv, rd) f = let res = f rsv rtv in

@@ -10,22 +10,16 @@ import Data.Word (Word16)
 import DataModel
 import Numeric
 
--- | given a parser, try to apply it at most once
-once :: Parser a -> Parser [a]
-once p = aux p <|> return []
-   where aux pa = do x <- pa
-                     return [x]
-
 -- | parser for word16
 dirIntP :: Parser Word16
-dirIntP = do _ <- sP $ once $ char '#'
+dirIntP = do _ <- sP $ string "#" <|> return []
              n <- sP $ string "-" <|> return []
              s <- many1 digit  
              return $ (read (n ++ s) :: Word16)
 
 dirHexP :: Parser Word16
 dirHexP = do _ <- sP $ string "0x" <|> string "0X" <|> 
-               string "x" <|> string "X" <|> return []
+               string "x" <|> string "X"
              s <- many1 hexDigit
              return $ fromIntegral $ (fst . head . readHex) s
 
@@ -37,6 +31,7 @@ word16 = dirIntP <|> dirHexP
 constP :: String -> a -> Parser a
 constP s x = do s' <- string s
                 if s' == s then return x else fail "did not match"
+
 
 -- | given a parser, apply it after ignoring all leading white spaces
 wsP :: Parser a -> Parser a
@@ -67,7 +62,7 @@ commentP = do _ <- sP $ char ';'
               return []
 
 regP :: Parser Tok
-regP = do _ <- sP $ once $ char ','
+regP = do _ <- sP $ string "," <|> return []
           _ <- sP $ string "R"
           i <- sP int
           return $ (R i) 
@@ -76,8 +71,8 @@ immP :: Parser Tok
 immP = hexP <|> decimalP
 
 decimalP :: Parser Tok
-decimalP = do _ <- sP $ once $ char ','
-              _ <- sP $ once $ char '#'
+decimalP = do _ <- sP $ string "," <|> return []
+              _ <- sP $ string "#" <|> return []
               i <- sP int
               return $ IMM i
 
@@ -88,7 +83,7 @@ hexP = do _ <- sP $ string "0x" <|> string "0X" <|>
           return $ IMM i
 
 labelTokP :: Parser Tok
-labelTokP = do _ <- sP $ once $ char ','
+labelTokP = do _ <- sP $ string "," <|> return []
                s <- sP $ many1 notNewLineOrSpaceP
                return $ LABEL s
 
@@ -132,21 +127,21 @@ ternaryP = choice [ constP "ADDI" ADD, constP "MUL" MUL,
 opP :: Parser Line
 opP = choice 
       [ wsP $ constP "NOP" (Memory $ InsnVal $ Single NOP),
-       wsP $ constP "RTI" (Memory $ InsnVal $ Single RTI),
-       wsP $ constP "RET" (Memory $ InsnVal $ Single RET),
-       wsP $ constP "EOF" (Memory $ InsnVal $ Single EOF) ]
+        wsP $ constP "RTI" (Memory $ InsnVal $ Single RTI),
+        wsP $ constP "RET" (Memory $ InsnVal $ Single RET),
+        wsP $ constP "EOF" (Memory $ InsnVal $ Single EOF) ]
 
 unaryStP :: Parser Line
 unaryStP = do op <- wsP $ unaryP
               tok <- sP $ tokenP
-              _ <- once $ commentP
+              _ <- many $ commentP
               return ( Memory $ InsnVal $ Unary op tok )
 
 binaryStP :: Parser Line
 binaryStP = do op <- wsP $ binaryP
                tok1 <- tokenP
                tok2 <- tokenP
-               _ <- once $ commentP
+               _ <- many commentP
                return ( Memory $ InsnVal $ Binary op tok1 tok2)
 
 ternaryStP :: Parser Line
@@ -154,54 +149,54 @@ ternaryStP = do op <- wsP $ ternaryP
                 tok1 <- tokenP
                 tok2 <- tokenP
                 tok3 <- tokenP
-                _ <- once $ commentP
+                _ <- many commentP
                 return ( Memory $ InsnVal $ Ternary op tok1 tok2 tok3 )
 
 dataP :: Parser Line
 dataP = do _ <- wsP $ string ".DATA"
-           _ <- once $ commentP
+           _ <- many $ commentP
            return ( Directive $ DATA )
 
 codeP :: Parser Line
 codeP = do _ <- wsP $ string ".CODE"
-           _ <- once $ commentP
+           _ <- many commentP
            return ( Directive $ CODE )
 
 falignP :: Parser Line
 falignP = do _ <- wsP $ string ".FALIGN"
-             _ <- once $ commentP
+             _ <- many commentP
              return ( Directive $ FALIGN )
 
 addrP :: Parser Line
 addrP = do _ <- wsP $ string ".ADDR"
            i <- word16
-           _ <- once $ commentP
+           _ <- many commentP
            return ( Directive $ ADDR i )
 
 fillP :: Parser Line
 fillP = do _ <- wsP $ string ".FILL"
            i <- word16
-           _ <- once $ commentP
+           _ <- many commentP
            return ( Directive $ FILL i )
 
 blkwP :: Parser Line
 blkwP = do _ <- wsP $ string ".BLKW"
            i <- word16
-           _ <- once $ commentP
+           _ <- many commentP
            return ( Directive $ BLKW i )
 
 iconstP :: Parser Line
 iconstP = do l <- wsP $ many1 $ notNewLineOrSpaceP
              _ <- sP $ string ".CONST"
              i <- word16
-             _ <- once $ commentP
+             _ <- many commentP
              return ( Directive $ ICONST l i )
 
 uconstP :: Parser Line
 uconstP = do l <- wsP $ many1 $ notNewLineOrSpaceP
              _ <- sP $ string ".UCONST"
              i <- word16
-             _ <- once $ commentP
+             _ <- many commentP
              return ( Directive $ UCONST l i )
 
 dirP :: Parser Line
@@ -220,10 +215,8 @@ labelP = do s <- wsP $ many1 $ notNewLineOrSpaceP
             return $ Label s
 
 lineP :: Parser Line
-lineP = choice [ memValP, dirP, commentLineP, labelP ]
-
-otherP :: Parser LC4
-otherP = many $ labelP
+lineP = do _ <- many $ wsP commentP
+           choice [ memValP, dirP, labelP ]
 
 lc4P :: Parser LC4
 lc4P = many lineP
@@ -276,20 +269,15 @@ t4 = parse lineP sJMP ~?=
 
 t5 :: Test
 t5 = parse lc4P sProg ~?=
-     Right ( [ Label "BEGIN",Comment,
+     Right ( [ Label "BEGIN",
                Memory (InsnVal (Unary JMP (LABEL "TRAP_PUTC"))),
                Memory (InsnVal (Ternary ADD (R 5) (R 4) (IMM (17))))] )
-
 t6 :: Test
-t6 = parse lineP sComment ~?=
-     Right ( Comment )
-
-t7 :: Test
-t7 = parse lineP sDir ~?=
+t6 = parse lineP sDir ~?=
      Right ( Directive $ ADDR 5)
 
-t7a :: Test
-t7a = parse lineP sBRz ~?= Right ( Memory $ InsnVal $ Unary BRz (LABEL "ZERO") )
+t7 :: Test
+t7 = parse lineP sBRz ~?= Right ( Memory $ InsnVal $ Unary BRz (LABEL "ZERO") )
 
 t8 :: Test
 t8 = TestList ["s1" ~: p "sample.asm" ] where
@@ -297,43 +285,71 @@ t8 = TestList ["s1" ~: p "sample.asm" ] where
    succeed (Left _)  = assert False
    succeed (Right _) = assert True
 
-t9 :: IO ()
-t9 = do p <- parseFromFile lc4P "sample.asm"
-        let bool = p ~?= Right [ Comment,
-              Label "BEGIN",
-              Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
-              Memory $ InsnVal $ Ternary ADD (R 1) (R 1) (IMM 2),
-              Memory $ InsnVal $ Ternary ADD (R 2) (R 1) (IMM 171),
-              Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
-              Comment,Memory (InsnVal (Single NOP)),Label "END"] 
-        _ <- runTestTT bool
-        return ()
+tSample :: IO ()
+tSample = do p <- parseFromFile lc4P "sample.asm"
+             let bool = p ~?= Right [
+                   Memory (InsnVal (Binary CONST (R 2) (IMM 0))),
+                   Memory (InsnVal (Binary CONST (R 1) (IMM 4))),
+                   Memory (InsnVal (Binary CONST (R 0) (IMM 6))),
+                   Label "LOOP",Memory (InsnVal (Binary CMPI (R 1) (IMM 0))),
+                   Memory (InsnVal (Unary BRnz (LABEL "END"))),
+                   Memory (InsnVal (Ternary ADD (R 2) (R 2) (R 0))),
+                   Memory (InsnVal (Ternary ADD (R 1) (R 1) (IMM (-1)))),
+                   Label "END"]
+             _ <- runTestTT bool
+             return ()
 
-t10 :: IO ()
-t10 = do p <- parseFromFile lc4P "BRtest.asm"
-         let bool = p ~?= Right [ Comment,
-              Label "BEGIN",
-              Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
-              Memory $ InsnVal $ Ternary ADD (R 1) (R 1) (IMM 2),
-              Memory $ InsnVal $ Ternary ADD (R 2) (R 1) (IMM 171),
-              Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
-              Comment,Memory (InsnVal (Single NOP)),Label "END"] 
-         _ <- runTestTT bool
-         return ()
+tBRtest :: IO ()
+tBRtest = do p <- parseFromFile lc4P "BRtest.asm"
+             let bool = p ~?= Right [Directive CODE,Directive (ADDR 0),
+                   Memory (InsnVal (Binary CONST (R 1) (IMM 3))),
+                   Memory (InsnVal (Unary BRp (LABEL "POSITIVE"))),
+                   Memory (InsnVal (Single NOP)),Label "POSITIVE",
+                   Memory (InsnVal (Ternary ADD (R 3) (R 1) (IMM (-7)))),
+                   Memory (InsnVal (Unary BRnz (LABEL "NEGATIVE"))),
+                   Memory (InsnVal (Single NOP)),Label "NEGATIVE",
+                   Memory (InsnVal (Ternary MUL (R 1) (R 3) (R 1))),
+                   Memory (InsnVal (Unary BRn (LABEL "SUBTRACT"))),
+                   Memory (InsnVal (Ternary DIV (R 1) (R 3) (R 3))),
+                   Label "SUBTRACT",
+                   Memory (InsnVal (Ternary SUB (R 3) (R 3) (R 3))),
+                   Memory (InsnVal (Unary BRz (LABEL "ZERO"))),
+                   Memory (InsnVal (Single NOP)),Label "ZERO",
+                   Memory (InsnVal (Ternary DIV (R 1) (R 3) (R 1))),
+                   Memory (InsnVal (Unary BRnp (LABEL "WRONG_END"))),
+                   Memory (InsnVal (Unary BRnzp (LABEL "END"))),
+                   Label "WRONG_END",
+                   Memory (InsnVal (Ternary MUL (R 5) (R 5) (R 5))),
+                   Label "END",
+                   Memory (InsnVal (Ternary ADD (R 5) (R 5) (R 5))),
+                   Memory (InsnVal (Unary TRAP (IMM 255))),
+                   Label ".OS",
+                   Directive CODE,
+                   Directive (ADDR 33280),
+                   Directive FALIGN,
+                   Memory (InsnVal (Binary CONST (R 7) (IMM 0))),
+                   Memory (InsnVal (Single RTI))] 
+             _ <- runTestTT bool
+             return ()
 
-t11 :: IO ()
-t11 = do p <- parseFromFile lc4P "multiply.asm"
-         let bool = p ~?= Right [ Comment,
-              Label "BEGIN",
-              Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
-              Memory $ InsnVal $ Ternary ADD (R 1) (R 1) (IMM 2),
-              Memory $ InsnVal $ Ternary ADD (R 2) (R 1) (IMM 171),
-              Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
-              Comment,Memory (InsnVal (Single NOP)),Label "END"] 
-         _ <- runTestTT bool
-         return ()
+tMult :: IO ()
+tMult = do p <- parseFromFile lc4P "multiply.asm"
+           let bool = p ~?= Right [ Directive CODE,Directive (ADDR 0),
+                  Memory (InsnVal (Binary CONST (R 2) (IMM 0))),
+                  Memory (InsnVal (Binary CONST (R 1) (IMM 4))),
+                  Memory (InsnVal (Binary CONST (R 0) (IMM 6))),
+                  Label "LOOP",
+                  Memory (InsnVal (Binary CMPI (R 1) (IMM 0))),
+                  Memory (InsnVal (Unary BRnz (LABEL "END"))),
+                  Memory (InsnVal (Ternary ADD (R 2) (R 2) (R 0))),
+                  Memory (InsnVal (Ternary ADD (R 1) (R 1) (IMM (-1)))),
+                  Memory (InsnVal (Unary BRnzp (LABEL "LOOP"))),Label "END" ]
+           _ <- runTestTT bool
+           return ()
 
 main :: IO () 
 main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6, t7, t8 ])
-          t9
+          tSample
+          tBRtest
+          tMult
           return ()
