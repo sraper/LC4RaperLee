@@ -5,21 +5,8 @@ module DataModel where
 
 import Prelude
 import Data.Word (Word16)
-import Data.Int (Int16)
 import Control.Monad
 import Test.QuickCheck
-
-word16ToInt :: Word16 -> Int
-word16ToInt = fromIntegral
-
-int16ToWord16 :: Int16 -> Word16
-int16ToWord16 = fromIntegral
-
-word16ToInt16 :: Word16 -> Int16
-word16ToInt16 = fromIntegral
-
-intToWord16 :: Int -> Word16
-intToWord16 = fromIntegral
 
 type LC4 = [Line]
 
@@ -63,6 +50,9 @@ data TernaryOp = ADD | MUL | SUB | DIV
 
 data Tok = R Int | IMM Int | LABEL String
          deriving (Show, Eq)
+
+
+--Arbitrary Instances for LC4 data
 
 instance Arbitrary Tok where 
   arbitrary = oneof [ liftM R arbitrary, 

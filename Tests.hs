@@ -1,6 +1,7 @@
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults -fno-warn-orphans #-} 
 {-# LANGUAGE TypeSynonymInstances, FlexibleContexts, NoMonomorphismRestriction, 
     FlexibleInstances #-}
+
 module Tests where 
 
 import Prelude
@@ -28,6 +29,34 @@ main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6, t7, t8 ])
           return ()
 
 -------------------------------PARSER TESTS--------------------------------
+
+sADD :: String
+sADD = "ADD R5 R4 0x11"
+
+sCMP :: String
+sCMP = "CMP R1 R3   ;   boohoo"
+
+sCONST :: String
+sCONST = "CONST R1 -5   ; Hello"
+
+sJMP :: String 
+sJMP = "JMP TRAP_PUTC"
+
+sComment :: String
+sComment = ";    CIS 552"
+
+sDir :: String
+sDir = ".ADDR #   5  ; what"
+
+sLabel :: String
+sLabel = "BEGIN"
+
+sBRz :: String
+sBRz = "BRz ZERO     ; R3 = 0"
+
+sProg :: String
+sProg = "\n \t " ++ sLabel ++ "\n" ++ sComment ++  "\n" ++ sJMP ++ "\n" ++ sADD
+
 t0 :: Test
 t0 = parse lineP sLabel ~?= Right (Label "BEGIN")
 

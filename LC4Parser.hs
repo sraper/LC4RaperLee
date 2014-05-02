@@ -5,54 +5,16 @@ module LC4Parser where
 
 import Parser
 import ParserCombinators
-import Data.Word (Word16)
 import DataModel
-import Numeric
 
--- | parser for word16
-dirIntP :: Parser Word16
-dirIntP = do _ <- sP $ string "#" <|> return []
-             n <- sP $ string "-" <|> return []
-             s <- many1 digit  
-             return $ (read (n ++ s) :: Word16)
-
-dirHexP :: Parser Word16
-dirHexP = do _ <- sP $ string "0x" <|> string "0X" <|> 
-               string "x" <|> string "X"
-             s <- many1 hexDigit
-             return $ fromIntegral $ (fst . head . readHex) s
-
--- | parser for immediate field of directives
-word16 :: Parser Word16
-word16 = dirIntP <|> dirHexP
-
-
-constP :: String -> a -> Parser a
-constP s x = do s' <- string s
-                if s' == s then return x else fail "did not match"
-
-
--- | given a parser, apply it after ignoring all leading white spaces
-wsP :: Parser a -> Parser a
-wsP p = do _ <- many space
-           a <- p
-           return a
-
--- | given a parser, apply it after ignoring all leading spaces
-sP :: Parser a -> Parser a
-sP p = do _ <- many $ (char ' ' <|> char '\t')
-          a <- p
-          return a
-
--- | parser that parses any character except newline
+-- | parses any characters except newline
 notNewLineP :: Parser Char
 notNewLineP = satisfy ('\n' /=)
 
-listPredicates :: [Char -> Bool]
-listPredicates = [('\n' /=), (' ' /=), ('\t' /=), ('\v' /=), ('\r' /=), ('\f' /=)]
-
+-- | parses any characters except newline or space
 notNewLineOrSpaceP :: Parser Char
 notNewLineOrSpaceP = satisfyAll listPredicates
+  where listPredicates = [('\n' /=), (' ' /=), ('\t' /=), ('\v' /=), ('\r' /=), ('\f' /=)]
 
 -- | parser that parses comment
 commentP :: Parser [a]
@@ -60,27 +22,32 @@ commentP = do _ <- sP $ char ';'
               _ <- many notNewLineP
               return []
 
+-- | Parses and returns a register Token
 regP :: Parser Tok
 regP = do _ <- sP $ string "," <|> return []
           _ <- sP $ string "R"
           i <- sP int
           return $ (R i) 
 
+-- | Parses and returns an immediate Token
 immP :: Parser Tok
 immP = hexP <|> decimalP
 
+-- | Parses a string of decimal value and returns an immediate token
 decimalP :: Parser Tok
 decimalP = do _ <- sP $ string "," <|> return []
               _ <- sP $ string "#" <|> return []
               i <- sP int
               return $ IMM i
 
+-- | Parses a string of hex value and returns an immediate token
 hexP :: Parser Tok
 hexP = do _ <- sP $ string "0x" <|> string "0X" <|> 
                string "x" <|> string "X"
           i <- hex
           return $ IMM i
 
+-- | Parses and returns a label token
 labelTokP :: Parser Tok
 labelTokP = do _ <- sP $ string "," <|> return []
                s <- sP $ many1 notNewLineOrSpaceP
@@ -198,48 +165,24 @@ uconstP = do l <- wsP $ many1 $ notNewLineOrSpaceP
              _ <- many commentP
              return ( Directive $ UCONST l i )
 
+-- | Parser for directives
 dirP :: Parser Line
 dirP = choice [ dataP, codeP, falignP, addrP, 
          fillP, blkwP, iconstP, uconstP ]
 
+-- | Parser for memory values
 memValP :: Parser Line
 memValP = choice [opP, unaryStP, binaryStP, ternaryStP]
 
+-- | Parser for labels
 labelP :: Parser Line
 labelP = do s <- wsP $ many1 $ notNewLineOrSpaceP
             return $ Label s
 
+-- | Parses into lines
 lineP :: Parser Line
 lineP = do _ <- many $ wsP commentP
            choice [ memValP, dirP, labelP ]
 
 lc4P :: Parser LC4
 lc4P = many lineP
-
-sADD :: String
-sADD = "ADD R5 R4 0x11"
-
-sCMP :: String
-sCMP = "CMP R1 R3   ;   boohoo"
-
-sCONST :: String
-sCONST = "CONST R1 -5   ; Hello"
-
-sJMP :: String 
-sJMP = "JMP TRAP_PUTC"
-
-sComment :: String
-sComment = ";    CIS 552"
-
-sDir :: String
-sDir = ".ADDR #   5  ; what"
-
-sLabel :: String
-sLabel = "BEGIN"
-
-sBRz :: String
-sBRz = "BRz ZERO     ; R3 = 0"
-
-sProg :: String
-sProg = "\n \t " ++ sLabel ++ "\n" ++ sComment ++  "\n" ++ sJMP ++ "\n" ++ sADD
-

@@ -4,14 +4,14 @@
 -- Operations for building composite parsers are in the module
 -- ParserCombinators.
 
-module Parser (Parser,
-                   get,
-                   choose,
-                   (<|>),
-                   satisfy,
-                   satisfyAll,
-                   doParse,  
-                   ) where
+module Parser ( Parser,
+                get,
+                choose,
+                (<|>),
+                satisfy,
+                satisfyAll,
+                doParse,  
+              ) where
 
 newtype Parser a = P (String -> [(a, String)])
 
@@ -21,9 +21,9 @@ doParse (P p) s = p s
 -- | Return the next character
 -- (this was called 'oneChar' in lecture)
 get :: Parser Char
-get = P (\cs -> case cs of 
-                (x:xs) -> [ (x,xs) ]
-                []     -> [])
+get = P ( \cs -> case cs of 
+                 (x:xs) -> [ (x,xs) ]
+                 []     -> [] )
 
 -- | Return the next character if it satisfies the given predicate
 -- (this was called satP in lecture)
@@ -31,6 +31,7 @@ satisfy :: (Char -> Bool) -> Parser Char
 satisfy p = do c <- get
                if (p c) then return c else fail "End of input"
 
+-- | Returns the next character the list of predicates are satisfied
 satisfyAll :: [(Char -> Bool)] -> Parser Char
 satisfyAll l = do c <- get
                   if sat l c then return c
@@ -64,3 +65,4 @@ p1 `choose` p2 = P (\cs -> doParse p1 cs ++ doParse p2 cs)
 p1 <|> p2 = P $ \cs -> case doParse (p1 `choose` p2) cs of
                           []   -> []
                           x:_ -> [x]
+
