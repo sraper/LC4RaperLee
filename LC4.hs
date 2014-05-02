@@ -354,13 +354,14 @@ execOnce insn ms =
     Right _ -> Right ms' -- otherwise print out final machine state
 
 main :: String -> IO ()
-main file = do s <- parseFromFile lc4P file
-               case s of
-                 (Left _) -> print "Error while parsing through file"
-                 (Right insns) -> let ms = populateMemory insns emptyMachine 
-                                      ms'= ms {pc = 0x8200} in
-                                      runLC4 ms'
-               return ()
+main file = do 
+  s <- parseFromFile lc4P file
+  case s of
+    (Left _) -> print "Error while parsing through file"
+    (Right insns) -> let ms = populateMemory insns emptyMachine 
+                         ms'= ms {pc = 0x8200} in
+                     runLC4 ms'
+  return ()
 
 mainOptimized :: String -> IO ()
 mainOptimized file = do 
@@ -373,28 +374,31 @@ mainOptimized file = do
   return ()
 
 testPopulateMemory :: String -> IO ()
-testPopulateMemory file = do s <- parseFromFile lc4P file
-                             case s of
-                               (Left _) -> print "f up"
-                               (Right x) -> print $ populateMemory x emptyMachine
-                             return ()
+testPopulateMemory file = do 
+  s <- parseFromFile lc4P file
+  case s of
+    (Left _) -> print "Error while loading into memory"
+    (Right x) -> print $ populateMemory x emptyMachine
+  return ()
 
-canOptimize :: Insn -> Bool
-canOptimize (Binary CONST _ _)  = True
-canOptimize (Binary NOT _ _)    = True
-canOptimize (Ternary ADD _ _ _) = True
-canOptimize (Ternary SUB _ _ _) = True
-canOptimize (Ternary MUL _ _ _) = True
-canOptimize (Ternary DIV _ _ _) = True
-canOptimize (Ternary MOD _ _ _) = True
-canOptimize (Ternary AND _ _ _) = True
-canOptimize (Ternary OR  _ _ _) = True
-canOptimize (Ternary XOR _ _ _) = True
-canOptimize (Ternary LDR _ _ _) = True
-canOptimize (Ternary SLL _ _ _) = True
-canOptimize (Ternary SRA _ _ _) = True
-canOptimize (Ternary SRL _ _ _) = True
-canOptimize _                   = False
+canOptimize :: Insn -> Insn -> Bool
+canOptimize insn1 insn2 = canOptimizeOne insn1 && canOptimizeOne insn2
+  where 
+    canOptimizeOne (Binary CONST _ _)  = True
+    canOptimizeOne (Binary NOT _ _)    = True
+    canOptimizeOne (Ternary ADD _ _ _) = True
+    canOptimizeOne (Ternary SUB _ _ _) = True
+    canOptimizeOne (Ternary MUL _ _ _) = True
+    canOptimizeOne (Ternary DIV _ _ _) = True
+    canOptimizeOne (Ternary MOD _ _ _) = True
+    canOptimizeOne (Ternary AND _ _ _) = True
+    canOptimizeOne (Ternary OR  _ _ _) = True
+    canOptimizeOne (Ternary XOR _ _ _) = True
+    canOptimizeOne (Ternary LDR _ _ _) = True
+    canOptimizeOne (Ternary SLL _ _ _) = True
+    canOptimizeOne (Ternary SRA _ _ _) = True
+    canOptimizeOne (Ternary SRL _ _ _) = True
+    canOptimizeOne _                   = False
 
 getRD :: Insn -> Int
 getRD (Ternary _ (R rd) _ _) = rd
@@ -416,12 +420,11 @@ notDepends (Binary  _ (R rd1) _)   (Binary _ _  (R rs2)) =
   not $ rd1 == rs2
 notDepends _ _ = True
 
-
 optimize :: LC4 -> LC4
 optimize ((Memory (InsnVal x)):(Memory (InsnVal y)):xs) =
-  if (canOptimize x) && (canOptimize y) && (getRD x == getRD y) && (notDepends x y)
-    then (Memory (InsnVal y)) : (optimize xs)
-    else (Memory (InsnVal x)) : (Memory (InsnVal y)) : (optimize xs)
+  if (canOptimize x y) && (getRD x == getRD y) && (notDepends x y)
+  then (Memory (InsnVal y)) : (optimize xs)
+  else (Memory (InsnVal x)) : (Memory (InsnVal y)) : (optimize xs)
 optimize (x:xs) = x : (optimize xs)
 optimize [] = []
 
