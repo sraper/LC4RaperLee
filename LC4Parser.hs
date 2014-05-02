@@ -25,7 +25,7 @@ dirIntP = do _ <- sP $ once $ char '#'
 
 dirHexP :: Parser Word16
 dirHexP = do _ <- sP $ string "0x" <|> string "0X" <|> 
-               string "x" <|> string "X" <|> return []
+               string "x" <|> string "X"
              s <- many1 hexDigit
              return $ fromIntegral $ (fst . head . readHex) s
 
@@ -83,7 +83,7 @@ decimalP = do _ <- sP $ once $ char ','
 
 hexP :: Parser Tok
 hexP = do _ <- sP $ string "0x" <|> string "0X" <|> 
-               string "x" <|> string "X" <|> return []
+               string "x" <|> string "X"
           i <- hex
           return $ IMM i
 
@@ -320,6 +320,19 @@ t10 = do p <- parseFromFile lc4P "BRtest.asm"
               Comment,Memory (InsnVal (Single NOP)),Label "END"] 
          _ <- runTestTT bool
          return ()
+
+t11 :: IO ()
+t11 = do p <- parseFromFile lc4P "multiply.asm"
+         let bool = p ~?= Right [ Comment,
+              Label "BEGIN",
+              Memory $ InsnVal $ Binary CONST (R 1) (IMM 1),
+              Memory $ InsnVal $ Ternary ADD (R 1) (R 1) (IMM 2),
+              Memory $ InsnVal $ Ternary ADD (R 2) (R 1) (IMM 171),
+              Memory $ InsnVal $ Ternary SUB (R 1) (R 2) (R 1),
+              Comment,Memory (InsnVal (Single NOP)),Label "END"] 
+         _ <- runTestTT bool
+         return ()
+
 main :: IO () 
 main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6, t7, t8 ])
           t9

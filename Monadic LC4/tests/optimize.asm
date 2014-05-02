@@ -1,9 +1,0 @@
-	CONST R0, #2
-	CONST R0, #-1
-	CONST R1, #2
-	DIV R2, R0, R1
-	MUL R2, R3, R4
-	ADD R2, R3, R1
-	SUB R1, R2, R3
-END
-	NOP
