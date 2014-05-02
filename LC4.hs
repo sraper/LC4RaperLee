@@ -46,6 +46,7 @@ data LC4Error = OtherError String
               | DivisionByZero
               | IllegalMemAccess
               | IllegalInsnAccess
+              | TokenMismatch String
               deriving (Eq)
 
 instance Error LC4Error where
@@ -54,11 +55,12 @@ instance Error LC4Error where
 
 instance Show LC4Error where
   show (NoSuchInstruction)   = "Instruction does not exist"
+  show (TokenMismatch s)     = "Expecting either LABEL or IMM but got R in " ++ s
   show (NoSuchLabel s)       = "The label " ++ s ++ " does not exist"
   show (DivisionByZero)      = "Cannot divide by zero"
   show (IllegalMemAccess)    = "Cannot access memory" --NEED TO IMPLEMENT
   show (IllegalInsnAccess)   = "Cannot access Insn"
-  show (OtherError msg)       = msg
+  show (OtherError msg)      = msg
 
 instance Show MachineState where
   show (MachineState _pc _nzp _regs _priv _memory _labels) = 
@@ -80,7 +82,7 @@ showPopulatedMemory mem = show ( Data.Vector.filter (/= DataVal 0) mem )
 -- | Initial MachineState
 emptyMachine :: MachineState
 emptyMachine = MachineState {
-                 pc = 0x8200,
+                 pc = 0,
                  nzp = (False, True, False),
                  regs = Data.Vector.replicate 8 0,
                  priv = True,
@@ -88,13 +90,21 @@ emptyMachine = MachineState {
                  labels = Map.empty
                }
 
+isValidPC :: Word16 -> Bool -> Bool
+isValidPC pcv privv = not ((pcv >= 0x2000 && pcv < 0x8000) || pcv >= 0xA000)
+                   && not ((pcv >= 0x8000 && pcv < 0xA000) && not privv)
+
 -- | Fetches the next insn
 fetch :: (MonadState MachineState m, MonadError LC4Error m) => m Insn
 fetch = do ms <- get
-           let insn = (memory ms) ! (fromIntegral (pc ms))
-           case insn of
-             InsnVal i -> return i
-             DataVal _ -> throwError $ OtherError "wrong fetch, got a data value"
+           if isValidPC (pc ms) (priv ms)
+           then
+             let insn = (memory ms) ! (fromIntegral (pc ms)) in
+             case insn of
+               InsnVal i -> return i
+               DataVal _ -> throwError $ OtherError "wrong fetch, got a data value"
+           else
+             throwError $ OtherError $ "PC value of " ++ show (pc ms) ++ " is illegal" 
 
 -- -- | Helper function that returns true if trying to execute data value as insn
 -- isInvalidPC :: MachineState -> Bool
@@ -129,15 +139,15 @@ branchLogic :: (MonadState MachineState m, MonadError LC4Error m) =>
                Tok -> Bool -> m Delta
 branchLogic tok p = 
   do ms <- get
-     case p of
-       True -> case tok of
-         LABEL l -> let v = Map.lookup l (labels ms) in
-                    case v of
-                      (Just i) -> return [SetPC i]
-                      Nothing   -> throwError $ NoSuchLabel l
-         IMM i   -> return [SetPC ((pc ms ) + (fromIntegral i))]
-         _       -> throwError $ OtherError "Cannot Branch to a register"
-       False -> return [IncPC]
+     if p
+     then case tok of
+            LABEL l -> let v = Map.lookup l (labels ms) in
+                       case v of
+                         (Just i) -> return [SetPC i]
+                         Nothing   -> throwError $ NoSuchLabel l
+            IMM i   -> return [SetPC ((pc ms ) + (fromIntegral i))]
+            _       -> throwError $ TokenMismatch "BRANCH"
+     else return [IncPC]
 
 -- | Decoder
 decodeInsn :: (MonadState MachineState m, MonadError LC4Error m) => Insn -> m Delta
@@ -152,17 +162,13 @@ decodeInsn insn =
                                  SetNZP $ calcNZP $ 1 + (pc ms),
                                  SetPC $ (regs ms) ! rs ]
        (Unary JSR (LABEL l)) ->
-              let add = fromIntegral $ Map.findWithDefault 0 l $ labels ms in
-              return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL add 4) ]
+              let v = Map.lookup l (labels ms) in
+                case v of
+                  (Just i) -> return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL i 4) ]
+                  Nothing  -> throwError $ NoSuchLabel l
        (Unary JSR (IMM i))   ->
               return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL (fromIntegral i) 4) ]
-       (Unary JMP t)        -> 
-         case t of
-              LABEL l -> let add = Map.findWithDefault 0 l $ labels ms in
-                         return [ SetPC add ]
-              IMM i   -> let add = intToWord16 i in
-                         return [ SetPC $ (pc ms) + add ]
-              _       -> throwError $ OtherError "JMP: cannot take regVal"
+       (Unary JMP t)        -> branchLogic t True
        (Unary JMPR (R rs))  -> return [ SetPC $ (regs ms) ! rs ]
        (Single RET)         -> decodeInsn (Unary JMPR (R 7))
        (Unary TRAP (IMM i)) -> let newpcv = i + 0x8000 in
@@ -259,28 +265,38 @@ decodeInsn insn =
                    addr = (word16ToInt rsv) + i
                    val = (memory ms) ! addr in
                case val of
-                    DataVal d -> return [ SetReg rd d,
-                                          SetNZP $ calcNZP d, IncPC]
-                    _ -> throwError $ OtherError "Load Error" -- NEED ERROR
+                    DataVal d -> if addr < 0x2000 || (addr >= 0x8000 && addr < 0xA000)
+                                    || addr > 0xFFFF
+                                 then throwError IllegalMemAccess
+                                 else return [ SetReg rd d,
+                                               SetNZP $ calcNZP d, IncPC]
+                    _ -> throwError $ IllegalMemAccess -- NEED ERROR
        (Ternary STR (R rd) (R rs) (IMM i)) ->
                let rsv = (regs ms) ! rs
                    addr = (word16ToInt rsv) + i
                    val = (regs ms) ! rd in
-               return [ SetMem addr $ DataVal val, IncPC ]
+               if (addr < 0x2000 || (addr >= 0x8000 && addr < 0xA000) || addr > 0xFFFF) ||
+                  (not (priv ms) && (addr >= 0xA000 && addr <= 0x0FFFF))
+               then throwError IllegalMemAccess
+               else return [ SetMem addr $ DataVal val, IncPC ]
        (Binary CONST (R rd) (IMM i)) ->
                return [ SetReg rd $ intToWord16 i,
                         SetNZP $ calcNZP i, IncPC ]
        (Binary LEA (R r1) (LABEL l)) ->
-               let addr = Map.findWithDefault 0 l $ labels ms in
-               return [ SetReg r1 addr, 
-                        SetNZP $ calcNZP addr, IncPC ]
+               let v = Map.lookup l (labels ms) in
+                       case v of
+                         (Just i) -> return [ SetReg r1 i, 
+                                              SetNZP $ calcNZP i, IncPC ]
+                         Nothing   -> throwError $ NoSuchLabel l
        (Binary LC (R r1) (LABEL l)) ->
-               let addr = Map.findWithDefault 0 l $ labels ms
-                   val = (memory ms) ! word16ToInt addr in
-               case val of
-                 DataVal d -> return [ SetReg r1 d, 
-                                       SetNZP $ calcNZP d, IncPC]
-                 _         -> throwError $ OtherError "Cannot load constant" -- NEED ERROR
+               let addr = Map.lookup l (labels ms) in
+                 case addr of
+                   (Just i) -> let val = (memory ms) ! word16ToInt i in
+                                 case val of
+                                   DataVal d -> return [ SetReg r1 d, 
+                                                         SetNZP $ calcNZP d, IncPC]
+                                   _         -> throwError IllegalMemAccess
+                   Nothing   -> throwError $ NoSuchLabel l
        _  -> throwError $ NoSuchInstruction
 
 -- | Updates MachineState using input list of changes
@@ -300,7 +316,9 @@ updateMachineState (x:xs) ms = let update = updateMachineState in
 populateMemory :: LC4 -> MachineState -> MachineState
 populateMemory [] ms = ms
 populateMemory xs ms = 
-    Prelude.foldl pop (ms { pc = 0 }) xs where
+    let ms' = Prelude.foldl pop (ms { pc = 0 }) xs in
+    ms' { memory = (memory ms') // [(fromIntegral (pc ms'), InsnVal (Single EOF))] }
+    where
       pop acc i = case i of
         Directive (FALIGN) -> case (pc acc) `mod` 16 of
                                 0 -> acc
@@ -319,8 +337,8 @@ isTerminate :: (MonadState MachineState m) => m Bool
 isTerminate = do ms <- get
                  let insn = (memory ms) ! (fromIntegral (pc ms))
                  case insn of
-                   DataVal _ -> return True
-                   InsnVal _ -> return False
+                   InsnVal (Single EOF) -> return True
+                   _                    -> return False
 
 -- | execution loop - fetch, decode, and update state
 execute :: (MonadState MachineState m, MonadError LC4Error m) => m ()
@@ -359,7 +377,7 @@ main file = do
   case s of
     (Left _) -> print "Error while parsing through file"
     (Right insns) -> let ms = populateMemory insns emptyMachine 
-                         ms'= ms {pc = 0x8200} in
+                         ms'= ms {pc = 0} in
                      runLC4 ms'
   return ()
 
