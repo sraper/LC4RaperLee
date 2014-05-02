@@ -1,7 +1,13 @@
-{-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults  #-}
+{-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults 
+    -XTypeSynonymInstances -XFlexibleInstances#-}
 module DataModel where 
+
+import Prelude
 import Data.Word (Word16)
 import Data.Int (Int16)
+import Control.Monad
+import Test.QuickCheck
+
 
 word16ToInt :: Word16 -> Int
 word16ToInt = fromIntegral
@@ -57,3 +63,56 @@ data TernaryOp = ADD | MUL | SUB | DIV
 
 data Tok = R Int | IMM Int | LABEL String
          deriving (Show, Eq)
+
+instance Arbitrary Tok where 
+  arbitrary = oneof [ liftM R arbitrary, 
+                      liftM IMM arbitrary,
+                      liftM LABEL arbLabel ]
+
+arbLabel :: Gen String
+arbLabel = elements ["A", "B", "C", "D", "E", "F"]
+
+instance Arbitrary Op where
+  arbitrary = elements [ NOP, RTI, RET, EOF ]
+
+instance Arbitrary UnaryOp where
+  arbitrary = elements [ BRn, BRnz, BRnp, BRz, BRzp, BRp, BRnzp, JSRR, JSR, JMPR, TRAP, JMP ]
+
+instance Arbitrary BinaryOp where
+  arbitrary = elements [ CMP, CMPU, CMPI, CMPIU, NOT, CONST, HICONST, LEA, LC ]
+
+instance Arbitrary TernaryOp where
+  arbitrary = elements [ ADD, MUL, SUB, DIV, AND, OR, XOR, LDR, STR, SLL, SRA, SRL, MOD ]
+
+instance Arbitrary Insn where
+  arbitrary = oneof [ liftM Single arbitrary,
+                      liftM2 Unary arbitrary arbitrary,
+                      liftM3 Binary arbitrary arbitrary arbitrary,
+                      liftM4 Ternary arbitrary arbitrary arbitrary arbitrary ]
+
+arbDir :: Gen Dir
+arbDir = elements [ DATA, CODE, FALIGN ]
+
+instance Arbitrary Dir where
+  arbitrary = oneof [ arbDir,
+                      liftM ADDR arbitrary,
+                      liftM FILL arbitrary,
+                      liftM BLKW arbitrary,
+                      liftM2 ICONST arbLabel arbitrary,
+                      liftM2 UCONST arbLabel arbitrary ] 
+
+instance Arbitrary MemVal where
+  arbitrary = oneof [ liftM InsnVal arbitrary,
+                      liftM DataVal arbitrary ]
+
+instance Arbitrary Line where
+  arbitrary = oneof [ liftM Memory arbitrary,
+                      liftM Directive arbitrary,
+                      liftM Label arbitrary ]
+
+instance Arbitrary LC4 where
+  arbitrary = genList
+
+genList ::  (Arbitrary a) => Gen [a]
+genList = frequency [ (1, return []),
+                      (7, liftM2 (:) arbitrary genList) ]

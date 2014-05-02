@@ -5,7 +5,6 @@
 module LC4 where
 
 import Prelude
-
 import Control.Monad.State
 import Control.Monad.Error
 import Data.Vector (Vector, (!), (//), replicate, filter)
@@ -106,11 +105,6 @@ fetch = do ms <- get
            else
              throwError $ OtherError $ "PC value of " ++ show (pc ms) ++ " is illegal" 
 
--- -- | Helper function that returns true if trying to execute data value as insn
--- isInvalidPC :: MachineState -> Bool
--- isInvalidPC ms = let pc = pc ms in
---                  if (pc >= 0x2000 && pc < 0x8000) || (pc >= 0xA000)
-
 -- | Helper function that handles arithmetic or logical operations
 arithOrLogic :: (Word16, Word16, Int) -> (Word16 -> Word16 -> Word16) -> Delta
 arithOrLogic (rsv, rtv, rd) f = let res = f rsv rtv in
@@ -123,9 +117,9 @@ getRegVal ms i = (regs ms) ! i
 
 -- | Helper function that determines NZP bits based on input number
 calcNZP :: (Num a, Eq a, Ord a) => a -> (Bool, Bool, Bool)
-calcNZP x | x < 0  = (True, False, False) -- N
-calcNZP x | x == 0 = (False, True, False) -- Z
-calcNZP _          = (False, False, True) -- P
+calcNZP x | x < 0     = (True, False, False) -- N
+          | x == 0    = (False, True, False) -- Z
+          | otherwise = (False, False, True) -- P
 
 
 -- | Helper function that returns True if any of the NZP bits match the input
@@ -299,6 +293,7 @@ decodeInsn insn =
                    Nothing   -> throwError $ NoSuchLabel l
        _  -> throwError $ NoSuchInstruction
 
+
 -- | Updates MachineState using input list of changes
 updateMachineState :: Delta -> MachineState -> MachineState
 updateMachineState [] ms     = ms
@@ -342,12 +337,13 @@ isTerminate = do ms <- get
 
 -- | execution loop - fetch, decode, and update state
 execute :: (MonadState MachineState m, MonadError LC4Error m) => m ()
-execute = do halt <- isTerminate 
-             when ( not halt ) $ do
-               i <- fetch 
-               d <- trace ("insn = " ++ show i) $ decodeInsn i
-               modify (updateMachineState d)
-               execute
+execute = do 
+  halt <- isTerminate 
+  when ( not halt ) $ do
+  i <- fetch 
+  d <- trace ("insn = " ++ show i) $ decodeInsn i
+  modify (updateMachineState d)
+  execute
 
 -- | Runs LC4 using some initial state
 runLC4 :: MachineState -> IO()
@@ -359,9 +355,10 @@ runLC4 ms =
 
 -- | Simulate the execution of one instruction
 execOneInsn :: (MonadState MachineState m, MonadError LC4Error m) => Insn -> m ()
-execOneInsn insn = do d <- decodeInsn insn
-                      _ <- modify (updateMachineState d)
-                      return ()
+execOneInsn insn = do 
+  d <- decodeInsn insn
+  _ <- modify (updateMachineState d)
+  return ()
 
 -- | Runs the machine using one instruction; for debugging purposes
 execOnce :: Insn -> MachineState -> Either String MachineState
@@ -453,11 +450,3 @@ showOptimized file = do s <- parseFromFile lc4P file
                           (Right x) -> print $ optimize x
                         return ()
 
---Jasmine's questions:
---Note: Changed calcNZP function because it was convoluted
---Note: new arithOrLogic function for arithmetic and logical operations
---Note: changed printPopulatedMemory to showPopulatedMemory
-
---To Do:
---Add more types of errors
---JSR
