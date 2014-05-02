@@ -10,9 +10,22 @@ import Data.Map as Map hiding ((!))
 
 import DataModel
 import LC4Parser
-import LC4
+import LC4 hiding (main)
 import ParserCombinators
 
+main :: IO ()
+main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6, t7, t8 ])
+          tSample
+          tBRtest
+          tMult
+          _ <- runTestTT (
+              TestList [ tNOP, tRTI, tJSRR, tJMP, tJMP2, tJMPR, tTRAP,
+                         tBR, tBR2, tBR3, tCMP, tCMPU, tCMPIU, tCMPI,
+                         tADD, tSUB, tSUB2, tADD2, tMOD, tAND, tAND2,
+                         tSLL, tSRL, tSRA, tLDR, tSTR, tCONST, tLEA,
+                         tLC ])
+                          
+          return ()
 
 -------------------------------PARSER TESTS--------------------------------
 t0 :: Test
@@ -53,7 +66,7 @@ t8 = TestList ["s1" ~: p "sample.asm" ] where
    succeed (Right _) = assert True
 
 tSample :: IO ()
-tSample = do p <- parseFromFile lc4P "sample.asm"
+tSample = do p <- parseFromFile lc4P "tests/sample.asm"
              let bool = p ~?= Right [
                    Memory (InsnVal (Binary CONST (R 2) (IMM 0))),
                    Memory (InsnVal (Binary CONST (R 1) (IMM 4))),
@@ -67,7 +80,7 @@ tSample = do p <- parseFromFile lc4P "sample.asm"
              return ()
 
 tBRtest :: IO ()
-tBRtest = do p <- parseFromFile lc4P "BRtest.asm"
+tBRtest = do p <- parseFromFile lc4P "tests/BRtest.asm"
              let bool = p ~?= Right [Directive CODE,Directive (ADDR 0),
                    Memory (InsnVal (Binary CONST (R 1) (IMM 3))),
                    Memory (InsnVal (Unary BRp (LABEL "POSITIVE"))),
@@ -100,7 +113,7 @@ tBRtest = do p <- parseFromFile lc4P "BRtest.asm"
              return ()
 
 tMult :: IO ()
-tMult = do p <- parseFromFile lc4P "multiply.asm"
+tMult = do p <- parseFromFile lc4P "tests/multiply.asm"
            let bool = p ~?= Right [ Directive CODE,Directive (ADDR 0),
                   Memory (InsnVal (Binary CONST (R 2) (IMM 0))),
                   Memory (InsnVal (Binary CONST (R 1) (IMM 4))),
@@ -114,12 +127,6 @@ tMult = do p <- parseFromFile lc4P "multiply.asm"
            _ <- runTestTT bool
            return ()
 
-main :: IO () 
-main = do _ <- runTestTT (TestList [ t1, t2, t3, t4, t5, t6, t7, t8 ])
-          tSample
-          tBRtest
-          tMult
-          return ()
 
 ---------------------------LC4 Execution TESTS-----------------------------
 -- | A Simple Machine for Testing
@@ -134,136 +141,125 @@ simpMachine = MachineState {
               }
 
 tNOP :: Test
-tNOP = execOnce (Single NOP) simpMachine ~?= (Right $ simpMachine { pc = 1 })
+tNOP = runOnce (Single NOP) simpMachine ~?= (Right $ simpMachine { pc = 1 })
 
 tRTI :: Test
-tRTI = execOnce (Single RTI) m ~?= (Right $ m { pc = 7, priv = False })
+tRTI = runOnce (Single RTI) m ~?= (Right $ m { pc = 7, priv = False })
        where m = simpMachine { priv = True }
 
 tJSRR :: Test
-tJSRR = execOnce (Unary JSRR (R 1)) simpMachine ~?= 
+tJSRR = runOnce (Unary JSRR (R 1)) simpMachine ~?= 
         (Right $ simpMachine { regs = (regs simpMachine) // [(7,1)], pc = 1, nzp = (False, False, True) })
 
 tJMP :: Test
-tJMP = execOnce (Unary JMP (LABEL "lab")) simpMachine ~?= (Right $ simpMachine { pc = 10 })
+tJMP = runOnce (Unary JMP (LABEL "lab")) simpMachine ~?= (Right $ simpMachine { pc = 10 })
 
 tJMP2 :: Test
-tJMP2 = execOnce (Unary JMP (IMM 10)) simpMachine ~?= (Right $ simpMachine { pc = 10 })
+tJMP2 = runOnce (Unary JMP (IMM 10)) simpMachine ~?= (Right $ simpMachine { pc = 10 })
 
 tJMPR :: Test
-tJMPR = execOnce (Unary JMPR (R 5)) simpMachine ~?= (Right $ simpMachine { pc = 5 })
+tJMPR = runOnce (Unary JMPR (R 5)) simpMachine ~?= (Right $ simpMachine { pc = 5 })
 
 tTRAP :: Test
-tTRAP = execOnce (Unary TRAP (IMM 10)) simpMachine ~?=
+tTRAP = runOnce (Unary TRAP (IMM 10)) simpMachine ~?=
         (Right $ simpMachine { priv = True, regs = (regs simpMachine) // [(7, 1)], pc = 32778, nzp = (False, False, True) })
 
 tBR :: Test
-tBR = execOnce (Unary BRn (IMM 10)) simpMachine ~?= (Right $ simpMachine { pc = 1 })
+tBR = runOnce (Unary BRn (IMM 10)) simpMachine ~?= (Right $ simpMachine { pc = 1 })
 
 tBR2 :: Test
-tBR2 = execOnce (Unary BRn (IMM 10)) m ~?= (Right $ m { pc = 10 })
+tBR2 = runOnce (Unary BRn (IMM 10)) m ~?= (Right $ m { pc = 10 })
        where m = simpMachine { nzp = (True, False, False) }
 
 tBR3 :: Test
-tBR3 = execOnce (Unary BRn (LABEL "lab")) m ~?= (Right $ m { pc = 10 })
+tBR3 = runOnce (Unary BRn (LABEL "lab")) m ~?= (Right $ m { pc = 10 })
        where m = simpMachine { nzp = (True, False, False) }
 
 tBR4 :: Test
-tBR4 = execOnce (Unary BRnzp (IMM 10)) m ~?= (Right $ m { pc = 10 })      
+tBR4 = runOnce (Unary BRnzp (IMM 10)) m ~?= (Right $ m { pc = 10 })      
        where m = emptyMachine { nzp = (True, False, False) }
 
 tCMP :: Test
-tCMP = execOnce (Binary CMP (R 1) (R 2)) m ~?= (Right $ m { pc = 1, nzp = (False, False, True) })
+tCMP = runOnce (Binary CMP (R 1) (R 2)) m ~?= (Right $ m { pc = 1, nzp = (False, False, True) })
        where m = simpMachine { regs = (regs simpMachine) // [(2, -1)] }
 
 tCMPU :: Test
-tCMPU = execOnce (Binary CMPU (R 1) (R 2)) m ~?= (Right $ m { pc = 1, nzp = (True, False, False) })
+tCMPU = runOnce (Binary CMPU (R 1) (R 2)) m ~?= (Right $ m { pc = 1, nzp = (True, False, False) })
         where m = simpMachine { regs = (regs simpMachine) // [(2, -1)] }
 
 tCMPIU :: Test
-tCMPIU = execOnce (Binary CMPIU (R 1) (IMM (-1))) simpMachine ~?=
+tCMPIU = runOnce (Binary CMPIU (R 1) (IMM (-1))) simpMachine ~?=
          (Right $ simpMachine { pc = 1, nzp = (True, False, False) })
 
 tCMPI :: Test
-tCMPI = execOnce (Binary CMPI (R 1) (IMM (-1))) simpMachine ~?= (Right $ 
+tCMPI = runOnce (Binary CMPI (R 1) (IMM (-1))) simpMachine ~?= (Right $ 
         simpMachine { pc = 1, nzp = (False, False, True) })
 
 tADD :: Test
-tADD = execOnce (Ternary ADD (R 1) (R 2) (R 3)) simpMachine ~?= (Right $  
+tADD = runOnce (Ternary ADD (R 1) (R 2) (R 3)) simpMachine ~?= (Right $  
        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 5)], nzp = (False, False, True) })
 
 tADDI :: Test
-tADDI = execOnce (Ternary ADD (R 1) (R 2) (IMM (-7))) simpMachine ~?= (Right $
+tADDI = runOnce (Ternary ADD (R 1) (R 2) (IMM (-7))) simpMachine ~?= (Right $
         simpMachine {pc = 1, regs = (regs simpMachine) // [(1, -5)], nzp = (True, False, False)})
 
 tSUB :: Test
-tSUB = execOnce (Ternary SUB (R 1) (R 2) (R 3)) m ~?= (Right $ 
+tSUB = runOnce (Ternary SUB (R 1) (R 2) (R 3)) m ~?= (Right $ 
        m { pc = 1, regs = (regs m) // [(1, 3)], nzp = (False, False, True) })
        where m = simpMachine { regs = (regs simpMachine) // [(3, -1)] }
 
-
--- Why did i fail here?
 tSUB2 :: Test
-tSUB2 = execOnce (Ternary SUB (R 1) (R 2) (R 3)) simpMachine ~?= (Right $ 
+tSUB2 = runOnce (Ternary SUB (R 1) (R 2) (R 3)) simpMachine ~?= (Right $ 
         simpMachine { pc = 1, regs = (regs simpMachine) // [(1, -1)], nzp = (True, False, False) })
 
 tADD2 :: Test
-tADD2 = execOnce (Ternary ADD (R 1) (R 2) (IMM 3)) simpMachine ~?= (Right $  
+tADD2 = runOnce (Ternary ADD (R 1) (R 2) (IMM 3)) simpMachine ~?= (Right $  
         simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 5)], nzp = (False, False, True) })
 
 tMOD :: Test
-tMOD = execOnce (Ternary MOD (R 1) (R 5) (R 3)) simpMachine ~?= (Right $ 
+tMOD = runOnce (Ternary MOD (R 1) (R 5) (R 3)) simpMachine ~?= (Right $ 
        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 2)], nzp = (False, False, True) })
 
 tAND :: Test
-tAND = execOnce (Ternary AND (R 1) (R 2) (R 6)) simpMachine ~?= (Right $ 
+tAND = runOnce (Ternary AND (R 1) (R 2) (R 6)) simpMachine ~?= (Right $ 
        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 2)], nzp = (False, False, True) })
 
 tAND2 :: Test
-tAND2 = execOnce (Ternary AND (R 1) (R 2) (IMM 6)) simpMachine ~?= (Right $ 
+tAND2 = runOnce (Ternary AND (R 1) (R 2) (IMM 6)) simpMachine ~?= (Right $ 
         simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 2)], nzp = (False, False, True) })
 
 tSLL :: Test
-tSLL = execOnce (Ternary SLL (R 1) (R 2) (IMM 2)) simpMachine ~?= (Right $ 
+tSLL = runOnce (Ternary SLL (R 1) (R 2) (IMM 2)) simpMachine ~?= (Right $ 
        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 8)], nzp = (False, False, True) })
 
 tSRA :: Test
-tSRA = execOnce (Ternary SRL (R 1) (R 2) (IMM 2)) m ~?= (Right $ 
+tSRA = runOnce (Ternary SRL (R 1) (R 2) (IMM 2)) m ~?= (Right $ 
        m { pc = 1, regs = (regs m) // [(1, 16383)], nzp = (False, False, True) })
        where m = simpMachine { regs = (regs simpMachine) // [(2, -1)]}
 
 tSRL :: Test
-tSRL = execOnce (Ternary SRA (R 1) (R 2) (IMM 2)) m ~?= (Right $ 
+tSRL = runOnce (Ternary SRA (R 1) (R 2) (IMM 2)) m ~?= (Right $ 
        m { pc = 1, regs = (regs m) // [(1, -1)], nzp = (True, False, False)})
        where m = simpMachine { regs = (regs simpMachine) // [(2, -1)]}
 
 tLDR :: Test
-tLDR = execOnce (Ternary LDR (R 1) (R 2) (IMM 3)) m ~?= (Right $ 
+tLDR = runOnce (Ternary LDR (R 1) (R 2) (IMM 3)) m ~?= (Right $ 
        m { pc = 1, regs = (regs m) // [(1, 10)], nzp = (False, False, True) })
        where m = simpMachine { memory = (memory simpMachine) // [(5, DataVal 10)] }
 
 tSTR :: Test
-tSTR = execOnce (Ternary STR (R 1) (R 2) (IMM 3)) simpMachine ~?= (Right $ 
+tSTR = runOnce (Ternary STR (R 1) (R 2) (IMM 3)) simpMachine ~?= (Right $ 
        simpMachine { pc = 1, memory = (memory simpMachine) // [(5, DataVal 1)] })
 
 tCONST :: Test
-tCONST = execOnce (Binary CONST (R 1) (IMM 10)) simpMachine ~?= (Right $ 
+tCONST = runOnce (Binary CONST (R 1) (IMM 10)) simpMachine ~?= (Right $ 
          simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 10)], nzp = (False, False, True) })
 
 tLEA :: Test
-tLEA = execOnce (Binary LEA (R 1) (LABEL "lab")) simpMachine ~?= (Right $ 
+tLEA = runOnce (Binary LEA (R 1) (LABEL "lab")) simpMachine ~?= (Right $ 
        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 10)], nzp = (False, False, True) })
 
 tLC :: Test
-tLC = execOnce (Binary LC (R 1) (LABEL "lab")) m ~?= (Right $ 
+tLC = runOnce (Binary LC (R 1) (LABEL "lab")) m ~?= (Right $ 
       m { pc = 1, regs = (regs m) // [(1, 3)] })
       where m = simpMachine { memory = (memory simpMachine) // [(10, DataVal 3)], nzp = (False, False, True) }
-
-runTests :: IO ()
-runTests = do _ <- runTestTT (
-                TestList [ tNOP, tRTI, tJSRR, tJMP, tJMP2, tJMPR, tTRAP,
-                           tBR, tBR2, tBR3, tCMP, tCMPU, tCMPIU, tCMPI,
-                           tADD, tSUB, tADD2, tMOD, tAND, tAND2, tSLL,
-                           tSRL, tSRA, tLDR, tSTR, tCONST, tLEA, tLC,
-                           tSUB2 ])
-              return ()
