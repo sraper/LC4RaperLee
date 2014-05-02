@@ -95,7 +95,7 @@ tSUB = execOnce (Ternary SUB (R 1) (R 2) (R 3)) m ~?= (Right $
 -- Why did i fail here?
 tSUB2 :: Test
 tSUB2 = execOnce (Ternary SUB (R 1) (R 2) (R 3)) simpMachine ~?= (Right $ 
-        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, 3)], nzp = (True, False, False) })
+        simpMachine { pc = 1, regs = (regs simpMachine) // [(1, -1)], nzp = (True, False, False) })
 
 tADD2 :: Test
 tADD2 = execOnce (Ternary ADD (R 1) (R 2) (IMM 3)) simpMachine ~?= (Right $  
@@ -154,5 +154,6 @@ runTests = do _ <- runTestTT (
                 TestList [ tNOP, tRTI, tJSRR, tJMP, tJMP2, tJMPR, tTRAP,
                            tBR, tBR2, tBR3, tCMP, tCMPU, tCMPIU, tCMPI,
                            tADD, tSUB, tADD2, tMOD, tAND, tAND2, tSLL,
-                           tSRL, tSRA, tLDR, tSTR, tCONST, tLEA, tLC ])
+                           tSRL, tSRA, tLDR, tSTR, tCONST, tLEA, tLC,
+                           tSUB2 ])
               return ()

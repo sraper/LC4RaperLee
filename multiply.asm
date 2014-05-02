@@ -6,8 +6,8 @@
 	.ADDR  x0000	; Start filling in instructions at address 0x00
 
 	CONST R2, #0    ; Initialize C to 0
-	CONST R1, #2
-	CONST R0, #2
+	CONST R1, #4
+	CONST R0, #6
 
 LOOP
 
