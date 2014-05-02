@@ -4,7 +4,6 @@
 
 module LC4 where
 
-import Prelude
 import Control.Monad.State
 import Control.Monad.Error
 import Data.Vector (Vector, (!), (//), replicate, filter)
@@ -12,8 +11,8 @@ import Data.Map as Map hiding ((!), update)
 import Data.Word (Word16)
 import Data.Int (Int16)
 import Data.Bits
-import Debug.Trace
 
+import Optimizations
 import DataModel
 import LC4Parser
 import ParserCombinators
@@ -57,7 +56,7 @@ instance Show LC4Error where
   show (TokenMismatch s)     = "Expecting either LABEL or IMM but got R in " ++ s
   show (NoSuchLabel s)       = "The label " ++ s ++ " does not exist"
   show (DivisionByZero)      = "Cannot divide by zero"
-  show (IllegalMemAccess)    = "Cannot access memory" --NEED TO IMPLEMENT
+  show (IllegalMemAccess)    = "Cannot access memory"
   show (IllegalInsnAccess)   = "Cannot access Insn"
   show (OtherError msg)      = msg
 
@@ -105,22 +104,6 @@ emptyMachine = MachineState {
 getRegVal :: MachineState -> Int -> Word16
 getRegVal ms i = (regs ms) ! i
 
-isValidPC :: Word16 -> Bool -> Bool
-isValidPC pcv privv = not ((pcv >= 0x2000 && pcv < 0x8000) || pcv >= 0xA000)
-                   && not ((pcv >= 0x8000 && pcv < 0xA000) && not privv)
-
--- | Fetches the next insn
-fetch :: (MonadState MachineState m, MonadError LC4Error m) => m Insn
-fetch = do ms <- get
-           if isValidPC (pc ms) (priv ms)
-           then
-             let insn = (memory ms) ! (fromIntegral (pc ms)) in
-             case insn of
-               InsnVal i -> return i
-               DataVal _ -> throwError $ OtherError "wrong fetch, got a data value"
-           else
-             throwError $ OtherError $ "PC value of " ++ show (pc ms) ++ " is illegal" 
-
 -- | Helper function that handles arithmetic or logical operations
 arithOrLogic :: (Word16, Word16, Int) -> (Word16 -> Word16 -> Word16) -> Delta
 arithOrLogic (rsv, rtv, rd) f = let res = f rsv rtv in
@@ -140,10 +123,8 @@ matchNZP (n, z, p) (n', z', p') = ( n == True && n' == True ) ||
                                   ( p == True && p' == True )
 
 -- | Helper function to handle branching
-branchLogic :: (MonadState MachineState m, MonadError LC4Error m) => 
-               Tok -> Bool -> m Delta
-branchLogic tok p = do 
-  ms <- get
+branchLogic :: (MonadError LC4Error m) => MachineState -> Tok -> Bool -> m Delta
+branchLogic ms tok p = do 
   if p
   then case tok of
          LABEL l -> let v = Map.lookup l (labels ms) in
@@ -154,10 +135,87 @@ branchLogic tok p = do
          _       -> throwError $ TokenMismatch "BRANCH"
   else return [IncPC]
 
+------------------------------------------------------------------------------------------------
+--------------------------------------- Execution Functions ------------------------------------
+------------------------------------------------------------------------------------------------
+-- | Runs the machine using the list of instructions parsed from assembly file
+main :: String -> IO ()
+main file = do 
+  s <- parseFromFile lc4P file
+  case s of
+    (Left _) -> print "Error while parsing through file"
+    (Right insns) -> let ms = populateMemory (optimize insns) emptyMachine 
+                         ms'= ms {pc = 0}
+                         (err, ms'') = runLC4 ms' in
+                     do print $ show err
+                        print ms''
+  return ()
+
+-- | Runs LC4 using some initial state
+runLC4 :: MachineState -> (Maybe LC4Error, MachineState)
+runLC4 ms =
+  let (err, ms') = runState (runErrorT execute) ms in
+  case err of
+    Left e  -> (Just e, ms')--print $ show e -- print out exception
+    Right _ -> (Nothing, ms')--print ms' -- otherwise print out final machine state
+
+-- | execution loop - fetch, decode, and update state
+execute :: (MonadState MachineState m, MonadError LC4Error m) => m ()
+execute = do 
+  halt <- isTerminate 
+  when ( not halt ) $ do
+    ms <- get
+    i  <- fetch ms
+    d  <- decodeInsn ms i
+    modify $ updateMachineState d
+    execute
+
+-- | Helper function to check whether or not program should terminate        
+isTerminate :: (MonadState MachineState m) => m Bool
+isTerminate = do ms <- get
+                 let insn = (memory ms) ! (fromIntegral (pc ms))
+                 case insn of
+                   InsnVal (Single EOF) -> return True
+                   _                    -> return False
+
+-- | Preprocessing method that handles directives & loads instructions into memory
+populateMemory :: LC4 -> MachineState -> MachineState
+populateMemory [] ms = ms
+populateMemory xs ms = 
+    let ms' = Prelude.foldl pop (ms { pc = 0 }) xs in
+    ms' { memory = (memory ms') // [(fromIntegral (pc ms'), InsnVal (Single EOF))] }
+    where
+      pop acc i = case i of
+        Directive (FALIGN) -> case (pc acc) `mod` 16 of
+                                0 -> acc
+                                x -> acc { pc = (pc acc) + (16 - x) }
+        Directive (ADDR a) -> acc { pc = a }
+        Directive (FILL v) -> acc { memory = (memory acc) // [(fromIntegral (pc acc), DataVal v)], pc = (pc acc) + 1 }
+        Directive (BLKW v) -> acc { pc = (pc acc) + v }
+        Directive _        -> acc
+        Memory t           -> acc { memory = (memory acc) // [(fromIntegral (pc acc), t)],
+                              pc = (pc acc) + 1 }
+        Label s            -> acc { labels = Map.insert s (pc acc) (labels acc) }
+
+isValidPC :: Word16 -> Bool -> Bool
+isValidPC pcv privv = not ((pcv >= 0x2000 && pcv < 0x8000) || pcv >= 0xA000) -- in data section
+                   && not ((pcv >= 0x8000 && pcv < 0xA000) && not privv)     -- in OS data w/o
+
+-- | Fetches the next insn
+fetch :: (MonadError LC4Error m) => MachineState -> m Insn
+fetch ms = do
+  if isValidPC (pc ms) (priv ms)
+  then
+    let insn = (memory ms) ! (fromIntegral (pc ms)) in
+    case insn of
+      InsnVal i -> return i
+      DataVal _ -> throwError $ OtherError "wrong fetch, got a data value"
+  else
+    throwError $ OtherError $ "PC value of " ++ show (pc ms) ++ " is illegal" 
+
 -- | Decoder that returns a list of changes that need to be made to MachineState
-decodeInsn :: (MonadState MachineState m, MonadError LC4Error m) => Insn -> m Delta
-decodeInsn insn = 
-  do ms <- get
+decodeInsn :: (MonadError LC4Error m) => MachineState -> Insn -> m Delta
+decodeInsn ms insn = do
      case insn of
        (Single NOP)         -> return [IncPC]
        (Single RTI)         -> let r7_val = (regs ms) ! 7 in
@@ -173,9 +231,9 @@ decodeInsn insn =
                   Nothing  -> throwError $ NoSuchLabel l
        (Unary JSR (IMM i))   ->
               return [ SetPC $ ((pc ms) .&. 0x8000) .|. (shiftL (fromIntegral i) 4) ]
-       (Unary JMP t)        -> branchLogic t True
+       (Unary JMP t)        -> branchLogic ms t True
        (Unary JMPR (R rs))  -> return [ SetPC $ (regs ms) ! rs ]
-       (Single RET)         -> decodeInsn (Unary JMPR (R 7))
+       (Single RET)         -> decodeInsn ms (Unary JMPR (R 7))
        (Unary TRAP (IMM i)) -> let newpcv = i + 0x8000 in
                                return [ SetReg 7 $ (pc ms) + 1,
                                         SetPriv True,
@@ -185,13 +243,13 @@ decodeInsn insn =
        -------------------------------------------------------------------------------
        ---------------------------------- BRANCHES -----------------------------------
        -------------------------------------------------------------------------------
-       (Unary BRn l)      -> branchLogic l (matchNZP (nzp ms) (True, False, False))
-       (Unary BRnz l)     -> branchLogic l (matchNZP (nzp ms) (True, True, False))
-       (Unary BRz l)      -> branchLogic l (matchNZP (nzp ms) (False, True, False))
-       (Unary BRzp l)     -> branchLogic l (matchNZP (nzp ms) (False, True, True))
-       (Unary BRnp l)     -> branchLogic l (matchNZP (nzp ms) (True, False, True))
-       (Unary BRp l)      -> branchLogic l (matchNZP (nzp ms) (False, False, True))
-       (Unary BRnzp l)    -> branchLogic l (matchNZP (nzp ms) (True, True, True))
+       (Unary BRn l)      -> branchLogic ms l (matchNZP (nzp ms) (True, False, False))
+       (Unary BRnz l)     -> branchLogic ms l (matchNZP (nzp ms) (True, True, False))
+       (Unary BRz l)      -> branchLogic ms l (matchNZP (nzp ms) (False, True, False))
+       (Unary BRzp l)     -> branchLogic ms l (matchNZP (nzp ms) (False, True, True))
+       (Unary BRnp l)     -> branchLogic ms l (matchNZP (nzp ms) (True, False, True))
+       (Unary BRp l)      -> branchLogic ms l (matchNZP (nzp ms) (False, False, True))
+       (Unary BRnzp l)    -> branchLogic ms l (matchNZP (nzp ms) (True, True, True))
        -------------------------------------------------------------------------------
        --------------------------------- COMPARES ------------------------------------
        -------------------------------------------------------------------------------
@@ -308,76 +366,25 @@ decodeInsn insn =
 updateMachineState :: Delta -> MachineState -> MachineState
 updateMachineState [] ms     = ms
 updateMachineState (x:xs) ms = let update = updateMachineState in
-      case x of
-       (SetPC v)      -> update xs (ms { pc = v })
-       (IncPC)        -> update xs (ms { pc = (pc ms) + 1 })
-       (SetNZP v)     -> update xs (ms { nzp = v })
-       (SetReg r v)   -> update xs (ms { regs = (regs ms) // [(r, v)] })
-       (SetPriv v)    -> update xs (ms { priv = v })
-       (SetMem i v)   -> update xs (ms { memory = (memory ms) // [(i, v)] })
-       (SetLabel l v) -> update xs (ms { labels = (Map.insert l v (labels ms)) })
+  case x of
+    (SetPC v)      -> update xs (ms { pc = v })
+    (IncPC)        -> update xs (ms { pc = (pc ms) + 1 })
+    (SetNZP v)     -> update xs (ms { nzp = v })
+    (SetReg r v)   -> update xs (ms { regs = (regs ms) // [(r, v)] })
+    (SetPriv v)    -> update xs (ms { priv = v })
+    (SetMem i v)   -> update xs (ms { memory = (memory ms) // [(i, v)] })
+    (SetLabel l v) -> update xs (ms { labels = (Map.insert l v (labels ms)) })
 
--- | Helper function to check whether or not program should terminate        
-isTerminate :: (MonadState MachineState m) => m Bool
-isTerminate = do ms <- get
-                 let insn = (memory ms) ! (fromIntegral (pc ms))
-                 case insn of
-                   InsnVal (Single EOF) -> return True
-                   _                    -> return False
-
--- | execution loop - fetch, decode, and update state
-execute :: (MonadState MachineState m, MonadError LC4Error m) => m ()
-execute = do 
-  halt <- isTerminate 
-  when ( not halt ) $ do
-  i <- fetch 
-  d <- trace ("insn = " ++ show i) $ decodeInsn i
-  modify (updateMachineState d)
-  execute
-
--- | Runs LC4 using some initial state
-runLC4 :: MachineState -> IO()
-runLC4 ms =
-  let (err, ms') = runState (runErrorT execute) ms in
-  case err of
-    Left e  -> print $ show e -- print out exception
-    Right _ -> print ms' -- otherwise print out final machine state
-
--- | Runs the machine using the list of instructions parsed from assembly file
-main :: String -> IO ()
-main file = do 
-  s <- parseFromFile lc4P file
-  case s of
-    (Left _) -> print "Error while parsing through file"
-    (Right insns) -> let ms = populateMemory insns emptyMachine 
-                         ms'= ms {pc = 0} in
-                     runLC4 ms'
-  return ()
-
--- | Preprocessing method that handles directives & loads instructions into memory
-populateMemory :: LC4 -> MachineState -> MachineState
-populateMemory [] ms = ms
-populateMemory xs ms = 
-    let ms' = Prelude.foldl pop (ms { pc = 0 }) xs in
-    ms' { memory = (memory ms') // [(fromIntegral (pc ms'), InsnVal (Single EOF))] }
-    where
-      pop acc i = case i of
-        Directive (FALIGN) -> case (pc acc) `mod` 16 of
-                                0 -> acc
-                                x -> acc { pc = (pc acc) + (16 - x) }
-        Directive (ADDR a) -> acc { pc = a }
-        Directive (FILL v) -> acc { memory = (memory acc) // [(fromIntegral (pc acc), DataVal v)], pc = (pc acc) + 1 }
-        Directive (BLKW v) -> acc { pc = (pc acc) + v }
-        Directive _        -> acc
-        Memory t           -> acc { memory = (memory acc) // [(fromIntegral (pc acc), t)],
-                              pc = (pc acc) + 1 }
-        Label s            -> acc { labels = Map.insert s (pc acc) (labels acc) }
+------------------------------------------------------------------------------------------------
+--------------------------------------- For Testing Purposes -----------------------------------
+------------------------------------------------------------------------------------------------
 
 -- | Simulate the execution of one insn
 execOneInsn :: (MonadState MachineState m, MonadError LC4Error m) => Insn -> m ()
 execOneInsn insn = do 
-  d <- decodeInsn insn
-  _ <- modify (updateMachineState d)
+  ms <- get
+  d  <- decodeInsn ms insn
+  _  <- modify $ updateMachineState d
   return ()
 
 -- | Runs the machine using one insn; for testing single insns
@@ -387,75 +394,3 @@ runOnce insn ms =
   case err of
     Left e  -> Left (show e) -- output error
     Right _ -> Right ms' -- otherwise print out final machine state
-
----------------------------Optimizations-------------------------------
-
--- | Returns true if the pair of instructions can be combined
-canCombine :: Insn -> Insn -> Bool
-canCombine insn1 insn2 = canOptimize insn1 && canOptimize insn2
-  where 
-    canOptimize (Binary CONST _ _)  = True
-    canOptimize (Binary NOT _ _)    = True
-    canOptimize (Ternary ADD _ _ _) = True
-    canOptimize (Ternary SUB _ _ _) = True
-    canOptimize (Ternary MUL _ _ _) = True
-    canOptimize (Ternary DIV _ _ _) = True
-    canOptimize (Ternary MOD _ _ _) = True
-    canOptimize (Ternary AND _ _ _) = True
-    canOptimize (Ternary OR  _ _ _) = True
-    canOptimize (Ternary XOR _ _ _) = True
-    canOptimize (Ternary LDR _ _ _) = True
-    canOptimize (Ternary SLL _ _ _) = True
-    canOptimize (Ternary SRA _ _ _) = True
-    canOptimize (Ternary SRL _ _ _) = True
-    canOptimize _                   = False
-
--- | get the index of the register that is being written to
-getRD :: Insn -> Int
-getRD (Ternary _ (R rd) _ _) = rd
-getRD (Binary  _ (R rd) _)   = rd
-getRD _                      = -1
-
--- | returns true if the second insn depends on the first
-depends :: Insn -> Insn -> Bool
-depends (Ternary _ (R rd1) _ _) (Ternary _ _ (R rs2) (R rv2)) = 
-  rd1 == rs2 || rd1 == rv2
-depends (Ternary _ (R rd1) _ _) (Binary  _ _ (R rs2)) =
-  rd1 == rs2
-depends (Ternary _ (R rd1) _ _) (Ternary _ _ (R rs2) _) = 
-  rd1 == rs2
-depends (Binary  _ (R rd1) _)   (Ternary _ _ (R rs2) (R rv2)) =
-  rd1 == rs2 || rd1 == rv2
-depends (Binary  _ (R rd1) _)   (Ternary _ _ (R rs2) _) = 
-  rd1 == rs2
-depends (Binary  _ (R rd1) _)   (Binary _ _  (R rs2)) =
-  rd1 == rs2
-depends _ _ = True
-
--- | Eliminates useless insns from an input LC4 program
-optimize :: LC4 -> LC4
-optimize ((Memory (InsnVal x)):(Memory (InsnVal y)):xs) =
-  if (canCombine x y) && (getRD x == getRD y) && (not $ depends x y)
-  then (Memory (InsnVal y)) : (optimize xs)
-  else (Memory (InsnVal x)) : (Memory (InsnVal y)) : (optimize xs)
-optimize (x:xs) = x : (optimize xs)
-optimize [] = []
-
--- | 
-showOptimized :: String -> IO ()
-showOptimized file = do 
-  s <- parseFromFile lc4P file
-  case s of
-     (Left _) -> print "Error while parsing through file"
-     (Right x) -> print $ optimize x
-  return ()
-
-mainOptimized :: String -> IO ()
-mainOptimized file = do 
-  s <- parseFromFile lc4P file
-  case s of
-    (Left _) -> print "Error while parsing through file"
-    (Right insns) -> let ms = populateMemory (optimize insns) emptyMachine 
-                         ms'= ms {pc = 0} in
-                     runLC4 ms'
-  return ()
